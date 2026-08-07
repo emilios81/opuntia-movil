@@ -106,6 +106,13 @@ export default function OpuntiaColor() {
   const liveStreamRef = useRef<MediaStream | null>(null);
   // Puntero siempre fresco al procesador de cuadro (ver más abajo).
   const liveFrameRef = useRef<() => void>(() => {});
+  // Ancho al que se procesa cada cuadro en vivo. El costo crece con el
+  // cuadrado: 720 son 2,2 veces más píxeles que 480, así que en equipos
+  // modestos conviene la opción baja.
+  const [liveWidth, setLiveWidth] = useState(480);
+  // Resolución efectiva de trabajo (el alto sale de la proporción de la
+  // cámara). Se muestra en pantalla para poder consignarla al reportar.
+  const [liveSize, setLiveSize] = useState({ w: 0, h: 0 });
 
   // Selection state
   const [selectionTool, setSelectionTool] = useState<SelectionType>(null);
@@ -215,13 +222,16 @@ export default function OpuntiaColor() {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
-    // Resolución fija de trabajo: rápido y suficiente para explorar
-    const targetWidth = 480;
+    // Resolución de trabajo elegida por el usuario; el alto sale de la
+    // proporción real que haya negociado la cámara.
+    const targetWidth = liveWidth;
     const targetHeight = Math.round((video.videoHeight / video.videoWidth) * targetWidth);
 
     if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
       canvas.width = targetWidth;
       canvas.height = targetHeight;
+      // Solo al cambiar el tamaño, no en cada cuadro.
+      setLiveSize({ w: targetWidth, h: targetHeight });
     }
 
     ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
@@ -235,7 +245,7 @@ export default function OpuntiaColor() {
     // además contaminaría el pipeline de la imagen estática.
     const result = filter.fn(sourceData, intensity, null, {});
     ctx.putImageData(OPC.applyPostProcessing(result, contrast, saturation), 0, 0);
-  }, [isLiveMode, activeFilterId, intensity, contrast, saturation]);
+  }, [isLiveMode, activeFilterId, intensity, contrast, saturation, liveWidth]);
 
   // El bucle se reagenda a través de este ref, no de la función capturada al
   // arrancar: si no, cambiar filtro o intensidad en vivo no tendría efecto.
@@ -594,7 +604,12 @@ export default function OpuntiaColor() {
                 </div>
                 <div className="mt-2 flex items-center justify-between px-2 py-1">
                   <div className="flex items-center gap-3 text-[10px] font-code text-muted-foreground uppercase tracking-widest">
-                    {!isLiveMode && <span className="flex items-center gap-1"><Maximize2 className="w-3 h-3" /> {imageSize.w} x {imageSize.h} PX</span>}
+                    <span className="flex items-center gap-1">
+                      <Maximize2 className="w-3 h-3" />
+                      {isLiveMode
+                        ? (liveSize.w ? `${liveSize.w} x ${liveSize.h} PX` : "—")
+                        : `${imageSize.w} x ${imageSize.h} PX`}
+                    </span>
                     <span className="hidden sm:flex items-center gap-1"><Zap className="w-3 h-3 text-accent" /> Motor v3.4.0</span>
                     {isStacking && processedSrc && <span className="flex items-center gap-1 text-accent font-bold animate-pulse"><StackingIcon className="w-3 h-3" /> STACK ACTIVO</span>}
                   </div>
@@ -646,7 +661,44 @@ export default function OpuntiaColor() {
                 </Button>
                 <Button variant="outline" className="w-full h-10 border-accent text-accent hover:bg-accent hover:text-white font-bold shadow-sm" onClick={handleReset}><PlusCircle className="w-4 h-4 mr-2" /> Nuevo</Button>
               </div>
-              
+
+              {isLiveMode && (
+                <Card className="p-4 space-y-3 shadow-inner bg-muted/10 border-border">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Resolución en vivo</label>
+                    {liveSize.w > 0 && (
+                      <span className="text-[10px] font-code font-bold bg-accent/10 text-accent px-2 py-0.5 rounded border border-accent/20">
+                        {liveSize.w}&times;{liveSize.h}
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { valor: 480, etiqueta: 'Baja', detalle: '480 px · fluido' },
+                      { valor: 720, etiqueta: 'HD 720', detalle: '720 px · más detalle' },
+                    ].map(o => (
+                      <button
+                        key={o.valor}
+                        onClick={() => setLiveWidth(o.valor)}
+                        className={cn(
+                          "flex flex-col items-center gap-0.5 py-2 px-2 rounded-lg border font-bold transition-all",
+                          liveWidth === o.valor
+                            ? "bg-accent border-accent text-white shadow-sm"
+                            : "bg-card border-border text-muted-foreground hover:bg-muted"
+                        )}
+                      >
+                        <span className="text-[11px]">{o.etiqueta}</span>
+                        <span className="text-[8px] font-normal opacity-70">{o.detalle}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-muted-foreground leading-snug">
+                    HD procesa 2,2 veces más p&iacute;xeles por cuadro. Si el video se entrecorta,
+                    volv&eacute; a Baja: el Modo Live es para explorar &mdash; el detalle real sale de la foto.
+                  </p>
+                </Card>
+              )}
+
               <Card className="bg-card shadow-lg border-border overflow-y-auto max-h-[400px] p-1 space-y-1 custom-scrollbar">
                 {FILTERS.map(f => (
                   <button
