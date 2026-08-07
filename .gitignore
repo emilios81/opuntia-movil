@@ -1,0 +1,32 @@
+# Next.js
+/.next/
+/out/
+/build/
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Producción
+.env
+.env.local
+.env.production
+.env.development
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+
+# Firebase Studio / IDE
+.firebase/
+.firebaserc
+firestore.indexes.json
+.idx/
+.vscode/
+.agents/
+*.log
+.DS_Store
+
+# Historial del repo original de Firebase Studio (contiene el .env viejo)
+.git-firebase-studio-backup/

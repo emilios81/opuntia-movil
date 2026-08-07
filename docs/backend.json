@@ -1,0 +1,253 @@
+{
+  "entities": {
+    "Project": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Project",
+      "type": "object",
+      "description": "Represents an archaeological project, typically corresponding to a specific site or research initiative, which can contain multiple rock art images and their analyses.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Project entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the archaeological project (e.g., 'Cueva de las Manos Site')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of the project."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the project was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the project was last updated.",
+          "format": "date-time"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the user who owns this project. (Relationship: User 1:N Project)"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "createdAt",
+        "userId"
+      ]
+    },
+    "Image": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Image",
+      "type": "object",
+      "description": "Represents an original rock art image uploaded by the user, including its metadata and a reference to its storage location.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Image entity."
+        },
+        "projectId": {
+          "type": "string",
+          "description": "Reference to the Project this image belongs to. (Relationship: Project 1:N Image)"
+        },
+        "originalFileName": {
+          "type": "string",
+          "description": "The original file name of the uploaded image."
+        },
+        "storagePath": {
+          "type": "string",
+          "description": "The full path to the original image file in Firebase Storage.",
+          "format": "uri"
+        },
+        "thumbnailStoragePath": {
+          "type": "string",
+          "description": "Optional: The full path to a generated thumbnail image in Firebase Storage for quicker loading.",
+          "format": "uri"
+        },
+        "uploadTimestamp": {
+          "type": "string",
+          "description": "Timestamp indicating when the image was uploaded to the app.",
+          "format": "date-time"
+        },
+        "photoTimestamp": {
+          "type": "string",
+          "description": "The date and time when the photo was originally taken, extracted from EXIF metadata.",
+          "format": "date-time"
+        },
+        "gpsLatitude": {
+          "type": "number",
+          "description": "The GPS latitude coordinate of where the photo was taken, extracted from EXIF metadata."
+        },
+        "gpsLongitude": {
+          "type": "number",
+          "description": "The GPS longitude coordinate of where the photo was taken, extracted from EXIF metadata."
+        },
+        "gpsAltitude": {
+          "type": "number",
+          "description": "Optional: The GPS altitude of where the photo was taken, extracted from EXIF metadata (in meters)."
+        },
+        "imageWidth": {
+          "type": "number",
+          "description": "The width of the original image in pixels."
+        },
+        "imageHeight": {
+          "type": "number",
+          "description": "The height of the original image in pixels."
+        }
+      },
+      "required": [
+        "id",
+        "projectId",
+        "originalFileName",
+        "storagePath",
+        "uploadTimestamp",
+        "photoTimestamp",
+        "gpsLatitude",
+        "gpsLongitude",
+        "imageWidth",
+        "imageHeight"
+      ]
+    },
+    "ImageAnalysisResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ImageAnalysisResult",
+      "type": "object",
+      "description": "Stores the details of a specific enhancement applied to an image, including the filter used, its intensity, and the path to the processed image.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the ImageAnalysisResult entity."
+        },
+        "imageId": {
+          "type": "string",
+          "description": "Reference to the Image that was processed. (Relationship: Image 1:N ImageAnalysisResult)"
+        },
+        "filterId": {
+          "type": "string",
+          "description": "The unique identifier of the enhancement filter applied (e.g., 'red', 'ybk')."
+        },
+        "filterName": {
+          "type": "string",
+          "description": "The human-readable name of the enhancement filter applied (e.g., 'Rojo', 'YBK')."
+        },
+        "intensity": {
+          "type": "number",
+          "description": "The intensity level applied for the filter, ranging from 0.5 to 3.0."
+        },
+        "processedStoragePath": {
+          "type": "string",
+          "description": "The full path to the processed image file in Firebase Storage.",
+          "format": "uri"
+        },
+        "processingTimestamp": {
+          "type": "string",
+          "description": "Timestamp indicating when this specific image enhancement was generated.",
+          "format": "date-time"
+        },
+        "predominantColors": {
+          "type": "array",
+          "description": "An array of strings listing the predominant colors or pigment types detected in the processed image (e.g., ['red', 'white', 'black']). This would require an additional analysis step.",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "imageId",
+        "filterId",
+        "filterName",
+        "intensity",
+        "processedStoragePath",
+        "processingTimestamp"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}/projects/{projectId}",
+        "definition": {
+          "entityName": "Project",
+          "schema": {
+            "$ref": "#/backend/entities/Project"
+          },
+          "description": "Stores individual archaeological projects. Each project is owned by a specific user, identified by the '{userId}' in the path. This path structure enforces ownership and enables simple security rules. Includes 'userId' as the owner reference within the document.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user who owns the project."
+            },
+            {
+              "name": "projectId",
+              "description": "The unique identifier for the specific project."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/projects/{projectId}/images/{imageId}",
+        "definition": {
+          "entityName": "Image",
+          "schema": {
+            "$ref": "#/backend/entities/Image"
+          },
+          "description": "Stores original rock art images associated with a specific project. This subcollection requires the denormalized 'projectOwnerId' field (matching the '{userId}' path parameter) for authorization independence, allowing security rules to verify ownership without a 'get()' call to the parent project. Includes GPS and EXIF metadata.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user who owns the parent project (and thus this image)."
+            },
+            {
+              "name": "projectId",
+              "description": "The unique identifier for the parent project."
+            },
+            {
+              "name": "imageId",
+              "description": "The unique identifier for the specific image."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/projects/{projectId}/images/{imageId}/analysisResults/{analysisResultId}",
+        "definition": {
+          "entityName": "ImageAnalysisResult",
+          "schema": {
+            "$ref": "#/backend/entities/ImageAnalysisResult"
+          },
+          "description": "Stores the results of image enhancement analyses applied to a specific image. This subcollection requires the denormalized 'projectOwnerId' field (matching the '{userId}' path parameter) for authorization independence, ensuring security rules can verify ownership without multiple 'get()' calls up the hierarchy. Includes details about the applied filter and path to processed image.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user who owns the grandparent project (and thus this analysis result)."
+            },
+            {
+              "name": "projectId",
+              "description": "The unique identifier for the grandparent project."
+            },
+            {
+              "name": "imageId",
+              "description": "The unique identifier for the parent image."
+            },
+            {
+              "name": "analysisResultId",
+              "description": "The unique identifier for the specific image analysis result."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure for RupestreAI leverages a hierarchical, path-based ownership model, prioritizing Authorization Independence and secure QAPs (Query/Access Patterns). All user-specific data (Projects, Images, ImageAnalysisResults) are nested under a top-level `/users/{userId}` collection. This immediately ties every document to a specific user's authentication ID (`request.auth.uid`), making basic ownership rules simple and robust.\n\nTo ensure **Authorization Independence (CRITICAL)** and eliminate the need for `get()` calls in security rules, crucial authorization context is denormalized. Specifically, for `Image` documents and `ImageAnalysisResult` documents, the `userId` of the owning project's creator will be redundantly stored as `projectOwnerId`. This means that when a user attempts to read, create, update, or delete an `Image` or `ImageAnalysisResult`, the security rules can verify `request.auth.uid == userId` (from the path) AND `resource.data.projectOwnerId == userId` (from the document itself), without having to fetch the parent `Project` document. This allows for atomic operations and significantly simplifies rule logic, improving debuggability.\n\n**Structural Segregation** is maintained by keeping all data within a user's `userId` path. This ensures a homogeneous security posture: all documents within a given user's branch are subject to that user's ownership rules. There are no plans for public data in this initial design, so no separate public collections are needed.\n\n**QAPs** are inherently secure and efficient with this design. When a user requests a list of their projects (`/users/{userId}/projects`), images within a project (`/users/{userId}/projects/{projectId}/images`), or analysis results for an image (`/users/{userId}/projects/{projectId}/images/{imageId}/analysisResults`), the Firestore security rules can validate the `{userId}` wildcard against `request.auth.uid` directly, ensuring that users can only query data they own. The denormalized `projectOwnerId` further reinforces this, providing an additional layer of verification within the document.\n\n**DBAC** is supported by directly using `request.auth.uid` for ownership. If advanced roles were needed (e.g., admin), they would be stored in dedicated collections like `/roles_admin/{uid}` for 'existence over content' checks, separate from the core data hierarchy.\n\n**Invariants** such as ownership (`userId`, `projectOwnerId`) and timestamps (`createdAt`, `updatedAt`, `uploadTimestamp`, `processingTimestamp`) can be enforced by strict validation in the security rules during `create` and `update` operations, ensuring data integrity."
+  }
+}
