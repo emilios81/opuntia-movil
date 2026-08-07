@@ -5,6 +5,10 @@
 
 @layer base {
   :root {
+    /* Alto máximo del visor. En celular la vista queda anclada arriba con
+       este alto y el panel de filtros se desplaza por debajo, para poder
+       elegir filtro sin perder de vista la cámara. */
+    --viewer-max-h: 46vh;
     --background: 26 33% 92%; /* #F2E9E1 */
     --foreground: 26 26% 17%; /* #372A20 */
     --card: 26 33% 95%;
@@ -42,6 +46,13 @@
     --input: 0 0% 20%;
     --muted: 0 0% 10%;
     --muted-foreground: 0 0% 70%;
+  }
+
+  /* En pantalla grande no hace falta anclar nada: el visor puede ocupar más. */
+  @media (min-width: 1024px) {
+    :root {
+      --viewer-max-h: 68vh;
+    }
   }
 }
 

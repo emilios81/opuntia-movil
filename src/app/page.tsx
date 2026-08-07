@@ -42,8 +42,6 @@ import * as OPC from '@/lib/image-processing';
 import { extractMetadata, type ImageMetadata } from '@/lib/exif-utils';
 import { generateReport } from '@/lib/pdf-report';
 import { useToast } from '@/hooks/use-toast';
-import { useFirebase, useUser } from '@/firebase';
-import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
 import { cn } from '@/lib/utils';
 
 type SelectionType = 'rect' | 'circle' | 'freehand' | null;
@@ -77,8 +75,9 @@ const PRESETS = [
 ];
 
 export default function OpuntiaColor() {
-  const { auth } = useFirebase();
-  const { user, isUserLoading } = useUser();
+  // Sin Firebase: la app no guarda nada en la nube ni necesita identificar a
+  // nadie. El inicio de sesión anónimo que traía el andamiaje era la única
+  // llamada a la red al arrancar, y ningún componente usaba ese usuario.
   const { toast } = useToast();
   
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -113,6 +112,9 @@ export default function OpuntiaColor() {
   // Resolución efectiva de trabajo (el alto sale de la proporción de la
   // cámara). Se muestra en pantalla para poder consignarla al reportar.
   const [liveSize, setLiveSize] = useState({ w: 0, h: 0 });
+  // Lo que entrega realmente la cámara. A getUserMedia se le piden 1280x720
+  // como "ideal", que es una sugerencia: el equipo puede devolver menos.
+  const [liveCapture, setLiveCapture] = useState({ w: 0, h: 0 });
 
   // Selection state
   const [selectionTool, setSelectionTool] = useState<SelectionType>(null);
@@ -125,12 +127,6 @@ export default function OpuntiaColor() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!user && !isUserLoading) {
-      initiateAnonymousSignIn(auth);
-    }
-  }, [user, isUserLoading, auth]);
 
   const stopLiveMode = useCallback(() => {
     if (liveRequestRef.current) {
@@ -222,9 +218,14 @@ export default function OpuntiaColor() {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
-    // Resolución de trabajo elegida por el usuario; el alto sale de la
-    // proporción real que haya negociado la cámara.
-    const targetWidth = liveWidth;
+    if (liveCapture.w !== video.videoWidth || liveCapture.h !== video.videoHeight) {
+      setLiveCapture({ w: video.videoWidth, h: video.videoHeight });
+    }
+
+    // Resolución de trabajo elegida por el usuario, pero nunca por encima de
+    // lo que la cámara entrega: ampliar no inventa detalle, solo cuesta el
+    // doble de cálculo por cuadro. El alto sale de la proporción real.
+    const targetWidth = Math.min(liveWidth, video.videoWidth);
     const targetHeight = Math.round((video.videoHeight / video.videoWidth) * targetWidth);
 
     if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
@@ -245,7 +246,7 @@ export default function OpuntiaColor() {
     // además contaminaría el pipeline de la imagen estática.
     const result = filter.fn(sourceData, intensity, null, {});
     ctx.putImageData(OPC.applyPostProcessing(result, contrast, saturation), 0, 0);
-  }, [isLiveMode, activeFilterId, intensity, contrast, saturation, liveWidth]);
+  }, [isLiveMode, activeFilterId, intensity, contrast, saturation, liveWidth, liveCapture]);
 
   // El bucle se reagenda a través de este ref, no de la función capturada al
   // arrancar: si no, cambiar filtro o intensidad en vivo no tendría efecto.
@@ -458,7 +459,8 @@ export default function OpuntiaColor() {
 
   return (
     <div className={`min-h-screen flex flex-col font-body ${isFieldMode ? 'field-mode' : ''}`}>
-      <header className="bg-primary text-primary-foreground py-4 px-6 flex justify-between items-center shadow-lg sticky top-0 z-50">
+      {/* Alto fijo (h-16 = 4rem) porque el visor se ancla justo debajo con top-16. */}
+      <header className="bg-primary text-primary-foreground h-16 px-4 sm:px-6 flex justify-between items-center shadow-lg sticky top-0 z-50">
         <div className="flex flex-col">
           <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
             OpuntiaColor <span className="bg-accent text-white text-[10px] px-1.5 py-0.5 rounded-full">v3.4.0</span>
@@ -496,9 +498,11 @@ export default function OpuntiaColor() {
         </div>
       </header>
 
-      <main className="flex-1 p-4 grid grid-cols-1 lg:grid-cols-4 gap-4 max-w-[1600px] mx-auto w-full">
-        <div className="lg:col-span-3 space-y-4 order-1">
-          <div className="bg-card border border-border rounded-2xl p-2 min-h-[400px] lg:min-h-[600px] flex flex-col shadow-sm relative overflow-hidden">
+      {/* Columna en celular (no grilla): así el visor puede quedar anclado
+          respecto de toda la página y no solo de su propia fila. */}
+      <main className="flex-1 p-4 flex flex-col lg:grid lg:grid-cols-4 gap-4 max-w-[1600px] mx-auto w-full">
+        <div className="lg:col-span-3 space-y-4 order-1 sticky top-16 z-30 -mx-4 px-4 -mt-4 pt-4 pb-2 bg-background lg:static lg:z-auto lg:mx-0 lg:px-0 lg:mt-0 lg:pt-0 lg:pb-0 lg:bg-transparent">
+          <div className="bg-card border border-border rounded-2xl p-2 flex flex-col shadow-sm relative overflow-hidden">
             {!imageSrc ? (
               <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground py-20">
                 <FileImage className="w-16 h-16 opacity-10 mb-4" />
@@ -512,13 +516,20 @@ export default function OpuntiaColor() {
                   className="relative mx-auto bg-black rounded-xl overflow-hidden shadow-2xl"
                   onMouseDown={handleStartDraw}
                   onTouchStart={handleStartDraw}
-                  style={{ 
+                  style={{
                     touchAction: (selectionTool && !isLiveMode) ? 'none' : 'auto',
-                    aspectRatio: isLiveMode ? 'auto' : imageSize.w / imageSize.h,
                     width: '100%',
-                    maxWidth: '100%',
-                    minHeight: isLiveMode ? '400px' : 'auto',
-                    height: isLiveMode ? '100%' : 'auto'
+                    // El visor nunca pasa de --viewer-max-h. Con imagen fija se
+                    // acota el ANCHO al que corresponde a ese alto, para que la
+                    // caja conserve exactamente la proporción de la foto: de eso
+                    // depende que la zona seleccionada caiga donde uno la dibuja.
+                    ...(isLiveMode
+                      ? { height: 'var(--viewer-max-h)' }
+                      : {
+                          aspectRatio: imageSize.w / imageSize.h,
+                          maxWidth: `calc(var(--viewer-max-h) * ${imageSize.h ? imageSize.w / imageSize.h : 1})`,
+                          maxHeight: 'var(--viewer-max-h)',
+                        }),
                   }}
                 >
                   {isLiveMode ? (
@@ -692,6 +703,18 @@ export default function OpuntiaColor() {
                       </button>
                     ))}
                   </div>
+                  {liveCapture.w > 0 && (
+                    <div className="flex justify-between items-center text-[9px] font-code text-muted-foreground border-t border-border pt-2">
+                      <span>C&aacute;mara entrega</span>
+                      <span className="font-bold">{liveCapture.w}&times;{liveCapture.h}</span>
+                    </div>
+                  )}
+                  {liveCapture.w > 0 && liveCapture.w < liveWidth && (
+                    <p className="text-[9px] text-accent leading-snug font-bold">
+                      Tu c&aacute;mara entrega {liveCapture.w} px de ancho, as&iacute; que HD no puede agregar
+                      detalle: se trabaja a {liveCapture.w} px.
+                    </p>
+                  )}
                   <p className="text-[9px] text-muted-foreground leading-snug">
                     HD procesa 2,2 veces más p&iacute;xeles por cuadro. Si el video se entrecorta,
                     volv&eacute; a Baja: el Modo Live es para explorar &mdash; el detalle real sale de la foto.
@@ -699,7 +722,9 @@ export default function OpuntiaColor() {
                 </Card>
               )}
 
-              <Card className="bg-card shadow-lg border-border overflow-y-auto max-h-[400px] p-1 space-y-1 custom-scrollbar">
+              {/* En celular la lista se muestra entera y se recorre con el
+                  desplazamiento de la página, con la cámara siempre a la vista. */}
+              <Card className="bg-card shadow-lg border-border lg:overflow-y-auto lg:max-h-[400px] p-1 space-y-1 custom-scrollbar">
                 {FILTERS.map(f => (
                   <button
                     key={f.id}

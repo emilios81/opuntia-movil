@@ -13,8 +13,8 @@ Versión de escritorio: <https://emilios81.github.io/opuntiacolor/>
   pigmentos. La salida coincide píxel a píxel con la versión de escritorio.
 - **Modo Live** — decorrelación en tiempo real sobre la cámara, para explorar
   un panel antes de fotografiarlo.
-- **Selección de zona** — rectángulo, círculo o mano alzada: las estadísticas
-  del filtro se calculan solo sobre lo seleccionado, como en DStretch.
+- **Modo Live con resolución elegible** — 480 px o 720 px por cuadro, según lo
+  que aguante el equipo, sin ampliar nunca por encima de lo que da la cámara.
 - **Sin conexión** — tras la primera visita la app queda completa en el
   dispositivo: código, tipografías e iconos. No pide nada a la red para
   procesar.
@@ -44,6 +44,13 @@ El sitio vive en una subcarpeta (`/opuntia-movil/`), definida por `basePath` en
 
 > La cámara y la instalación como app requieren HTTPS. GitHub Pages lo provee;
 > abrir el sitio por IP de red local (http://) deja el Modo Live sin funcionar.
+
+## Pendiente
+
+La **selección de zona** (rectángulo, círculo, mano alzada) está implementada en
+`page.tsx` —generación de máscara, dibujo del recuadro y composición— pero no
+tiene botones que la activen, así que hoy el filtro siempre se aplica a la
+imagen entera. En la versión de escritorio sí está disponible.
 
 ## Nota metodológica
 

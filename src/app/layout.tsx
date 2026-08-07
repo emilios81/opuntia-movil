@@ -2,7 +2,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Alegreya, Source_Code_Pro } from 'next/font/google';
 import './globals.css';
-import { FirebaseClientProvider } from '@/firebase';
 import { Toaster } from '@/components/ui/toaster';
 import { PWARegistration } from '@/components/PWARegistration';
 
@@ -54,11 +53,12 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body className="font-body antialiased bg-background text-foreground overflow-x-hidden">
+        {/* Sin proveedor de Firebase: nada en la app lo usa, y montarlo
+            inicializaba Auth y Firestore —cientos de KB— en cada arranque.
+            El código sigue en src/firebase/ por si algún día hace falta. */}
         <PWARegistration />
-        <FirebaseClientProvider>
-          {children}
-          <Toaster />
-        </FirebaseClientProvider>
+        {children}
+        <Toaster />
       </body>
     </html>
   );
