@@ -15,6 +15,11 @@ const nextConfig: NextConfig = {
   // canvas + SDK cliente de Firebase), así que no necesita servidor. `next
   // build` deja el sitio listo en out/ para subir a cualquier hosting.
   output: 'export',
+  // Sin optimizador de imágenes: no hay servidor que lo corra. Había un segundo
+  // bloque `images` con remotePatterns (placehold.co, unsplash, picsum) que
+  // pisaba este por ser una clave repetida, y de paso se llevaba puesto el
+  // unoptimized. Eran hosts del andamiaje inicial: la app no carga una sola
+  // imagen remota, todo sale del archivo que elige el usuario.
   images: {
     unoptimized: true,
   },
@@ -23,28 +28,6 @@ const nextConfig: NextConfig = {
   },
   eslint: {
     ignoreDuringBuilds: true,
-  },
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'placehold.co',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'images.unsplash.com',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'picsum.photos',
-        port: '',
-        pathname: '/**',
-      },
-    ],
   },
 };
 

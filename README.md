@@ -15,6 +15,12 @@ Versión de escritorio: <https://emilios81.github.io/opuntiacolor/>
   un panel antes de fotografiarlo.
 - **Modo Live con resolución elegible** — 480 px o 720 px por cuadro, según lo
   que aguante el equipo, sin ampliar nunca por encima de lo que da la cámara.
+- **Selección de zona** — rectángulo, círculo o mano alzada sobre la imagen. El
+  filtro se aplica solo ahí y, en los filtros de decorrelación (CRGB, DS-LAB,
+  LDS, YBK), las estadísticas se calculan con los datos de esa zona: mejor
+  separación de pigmentos locales, como en DStretch.
+- **Acumular filtros** — cada filtro se aplica sobre el resultado del anterior
+  en vez de partir siempre de la imagen original.
 - **Sin conexión** — tras la primera visita la app queda completa en el
   dispositivo: código, tipografías e iconos. No pide nada a la red para
   procesar.
@@ -47,10 +53,9 @@ El sitio vive en una subcarpeta (`/opuntia-movil/`), definida por `basePath` en
 
 ## Pendiente
 
-La **selección de zona** (rectángulo, círculo, mano alzada) está implementada en
-`page.tsx` —generación de máscara, dibujo del recuadro y composición— pero no
-tiene botones que la activen, así que hoy el filtro siempre se aplica a la
-imagen entera. En la versión de escritorio sí está disponible.
+Los metadatos EXIF y GPS de la foto se leen y salen en el reporte PDF, pero no
+se muestran en pantalla: no hay forma de comprobar en el momento si la foto
+traía coordenadas.
 
 ## Nota metodológica
 

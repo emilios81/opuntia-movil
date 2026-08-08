@@ -25,6 +25,7 @@ firestore.indexes.json
 .idx/
 .vscode/
 .agents/
+.claude/
 *.log
 .DS_Store
 

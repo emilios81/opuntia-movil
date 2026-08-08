@@ -9,11 +9,9 @@ import {
   Maximize2,
   FileImage,
   Zap,
-  MapPin,
   Sun,
   Moon,
   PlusCircle,
-  RotateCcw,
   Infinity as StackingIcon,
   Trash2,
   Square,
@@ -64,6 +62,12 @@ const FILTERS = [
   { id: "ybk", name: "YBK", icon: "🟡", desc: "Crominancia YCbCr / separación cromática", fn: OPC.ybk },
   { id: "clahe", name: "CLAHE", icon: "◐", desc: "Ecualización adaptativa de histograma / sombras", fn: OPC.clahe },
   { id: "map", name: "Mapa pigmentos", icon: "🗺️", desc: "Falso color por tipo de pigmento detectado", fn: OPC.map },
+];
+
+const SELECTION_TOOLS: { id: Exclude<SelectionType, null>; name: string; Icon: typeof Square }[] = [
+  { id: "rect", name: "Rectángulo", Icon: Square },
+  { id: "circle", name: "Círculo", Icon: CircleIcon },
+  { id: "freehand", name: "Mano alzada", Icon: Pencil },
 ];
 
 const PRESETS = [
@@ -294,6 +298,7 @@ export default function OpuntiaColor() {
         setFilteredImageData(null);
         setActiveFilterId(null);
         setSelection(null);
+        setSelectionTool(null);
         setFrozenStore({});
       };
       img.src = e.target?.result as string;
@@ -363,9 +368,14 @@ export default function OpuntiaColor() {
         Math.abs(sel.points[1].y - sel.points[0].y) * h
       );
     } else if (sel.type === 'circle' && sel.points.length >= 2) {
+      // La elipse queda INSCRIPTA en el rectángulo que define el arrastre,
+      // igual que en la versión de escritorio. Tomar el punto inicial como
+      // centro daba una zona del doble de tamaño para el mismo gesto, y con
+      // eso las estadísticas por zona no coincidían entre las dos versiones.
       const p1 = sel.points[0], p2 = sel.points[1];
-      const rx = Math.abs(p2.x - p1.x) * w, ry = Math.abs(p2.y - p1.y) * h;
-      ctx.ellipse(p1.x * w, p1.y * h, rx, ry, 0, 0, Math.PI * 2);
+      const cx = (p1.x + p2.x) / 2 * w, cy = (p1.y + p2.y) / 2 * h;
+      const rx = Math.abs(p2.x - p1.x) / 2 * w, ry = Math.abs(p2.y - p1.y) / 2 * h;
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     } else if (sel.type === 'freehand' && sel.points.length > 2) {
       ctx.moveTo(sel.points[0].x * w, sel.points[0].y * h);
       sel.points.forEach(p => ctx.lineTo(p.x * w, p.y * h));
@@ -408,6 +418,22 @@ export default function OpuntiaColor() {
     if (filteredImageData && !isLiveMode) applyPost(filteredImageData);
   }, [contrast, saturation, isLiveMode, filteredImageData]);
 
+  // Cambiar de zona invalida las estadísticas congeladas: en CRGB, DS-LAB, LDS
+  // e YBK la decorrelación se calcula CON LOS DATOS de la zona marcada, así que
+  // reusar las de la zona anterior daría un realce que no corresponde a lo que
+  // se ve seleccionado.
+  const pickSelectionTool = (tool: Exclude<SelectionType, null>) => {
+    setSelectionTool(prev => (prev === tool ? null : tool));
+    setSelection(null);
+    setFrozenStore({});
+  };
+
+  const clearSelection = () => {
+    setSelectionTool(null);
+    setSelection(null);
+    setFrozenStore({});
+  };
+
   const handleStartDraw = (e: React.MouseEvent | React.TouchEvent) => {
     if (!selectionTool || !containerRef.current || !image || isLiveMode) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -416,6 +442,7 @@ export default function OpuntiaColor() {
     const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
     setIsDrawing(true);
+    setFrozenStore({});
     setSelection({ type: selectionTool, points: [{ x, y }] });
   };
 
@@ -434,7 +461,23 @@ export default function OpuntiaColor() {
         return { ...prev, points: [prev.points[0], { x, y }] };
       });
     };
-    const handleUp = () => setIsDrawing(false);
+    const handleUp = () => {
+      setIsDrawing(false);
+      // La herramienta se apaga sola al soltar, como en escritorio: si quedara
+      // activa, el deslizador de comparación seguiría sin responder y el
+      // siguiente toque borraría la zona recién marcada.
+      setSelectionTool(null);
+      // Un toque sin arrastre no es una zona. Sin este descarte la máscara sale
+      // vacía, el filtro deja de verse y parece que la app se rompió.
+      setSelection(prev => {
+        if (!prev || prev.points.length < 2) return null;
+        if (prev.type === 'freehand' && prev.points.length < 3) return null;
+        const xs = prev.points.map(p => p.x), ys = prev.points.map(p => p.y);
+        const ancho = Math.max(...xs) - Math.min(...xs);
+        const alto = Math.max(...ys) - Math.min(...ys);
+        return ancho * alto < 0.0001 ? null : prev;
+      });
+    };
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleUp);
     window.addEventListener('touchmove', handleMove, { passive: false });
@@ -454,6 +497,7 @@ export default function OpuntiaColor() {
     setProcessedSrc(null);
     setActiveFilterId(null);
     setSelection(null);
+    setSelectionTool(null);
     setFrozenStore({});
   };
 
@@ -480,6 +524,7 @@ export default function OpuntiaColor() {
               <div className="space-y-4 text-sm py-4">
                 <p>· <strong>Decorrelación en Vivo</strong> — Exploración espectral dinámica mediante cámara.</p>
                 <p>· <strong>Algoritmos Precisos</strong> — Alineación científica total con la referencia v3.4.0.</p>
+                <p>· <strong>Estadísticas por zona</strong> — Con una zona marcada, la decorrelación (CRGB, DS-LAB, LDS, YBK) se calcula con los datos de esa zona: mejor separación de pigmentos locales, como en DStretch.</p>
                 <p>· <strong>Modo PWA</strong> — Funcionamiento 100% offline tras la instalación.</p>
                 <div className="pt-4 border-t border-border text-[10px] opacity-70 italic text-center">
                   Dr. Emilio A. Villafañez · LATDAA · Fund. Félix de Azara · Universidad Nacional de Catamarca (UNCA), Argentina
@@ -513,7 +558,10 @@ export default function OpuntiaColor() {
               <>
                 <div 
                   ref={containerRef}
-                  className="relative mx-auto bg-black rounded-xl overflow-hidden shadow-2xl"
+                  className={cn(
+                    "relative mx-auto bg-black rounded-xl overflow-hidden shadow-2xl",
+                    selectionTool && !isLiveMode && "cursor-crosshair ring-2 ring-accent"
+                  )}
                   onMouseDown={handleStartDraw}
                   onTouchStart={handleStartDraw}
                   style={{
@@ -585,11 +633,11 @@ export default function OpuntiaColor() {
                             />
                           )}
                           {selection.type === 'circle' && selection.points.length >= 2 && (
-                            <ellipse 
-                              cx={selection.points[0].x * 100}
-                              cy={selection.points[0].y * 100}
-                              rx={Math.abs(selection.points[1].x - selection.points[0].x) * 100}
-                              ry={Math.abs(selection.points[1].y - selection.points[0].y) * 100}
+                            <ellipse
+                              cx={(selection.points[0].x + selection.points[1].x) / 2 * 100}
+                              cy={(selection.points[0].y + selection.points[1].y) / 2 * 100}
+                              rx={Math.abs(selection.points[1].x - selection.points[0].x) / 2 * 100}
+                              ry={Math.abs(selection.points[1].y - selection.points[0].y) / 2 * 100}
                               fill="black"
                             />
                           )}
@@ -603,6 +651,11 @@ export default function OpuntiaColor() {
                       </defs>
                       <rect width="100" height="100" fill="black" fillOpacity="0.45" mask="url(#selection-mask)" />
                     </svg>
+                  )}
+                  {selectionTool && !isLiveMode && (
+                    <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 bg-accent text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg pointer-events-none whitespace-nowrap">
+                      Dibujá la zona · {SELECTION_TOOLS.find(t => t.id === selectionTool)?.name}
+                    </div>
                   )}
                   {isProcessing && (
                     <div className="absolute inset-0 bg-background/60 backdrop-blur-sm z-50 flex items-center justify-center rounded-xl">
@@ -742,6 +795,64 @@ export default function OpuntiaColor() {
                   </button>
                 ))}
               </Card>
+
+              {/* Zona y acumulación no tienen sentido sobre el video en vivo:
+                  ahí cada cuadro se procesa entero y de cero. */}
+              {!isLiveMode && (
+                <Card className="p-4 space-y-3 shadow-inner bg-muted/10 border-border">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Selección</label>
+                    {(selection || selectionTool) && (
+                      <button
+                        onClick={clearSelection}
+                        className="flex items-center gap-1 text-[9px] font-bold text-destructive hover:bg-destructive/10 px-2 py-0.5 rounded transition-colors"
+                      >
+                        <X className="w-3 h-3" /> Quitar
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {SELECTION_TOOLS.map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => pickSelectionTool(t.id)}
+                        className={cn(
+                          "flex flex-col items-center gap-1 py-2 px-1 rounded-lg border font-bold transition-all active:scale-95",
+                          selectionTool === t.id
+                            ? "bg-accent border-accent text-white shadow-sm"
+                            : "bg-card border-border text-muted-foreground hover:bg-muted"
+                        )}
+                      >
+                        <t.Icon className="w-4 h-4" />
+                        <span className="text-[8px] leading-none text-center">{t.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-muted-foreground leading-snug">
+                    {selectionTool
+                      ? "Arrastrá sobre la imagen para marcar la zona. Al soltar se aplica el filtro."
+                      : selection
+                      ? "Zona marcada: el filtro —y las estadísticas de decorrelación— se calculan solo ahí."
+                      : "Sin zona: el filtro va sobre toda la imagen."}
+                  </p>
+                </Card>
+              )}
+
+              {!isLiveMode && (
+                <Card className="p-4 space-y-3 shadow-inner bg-muted/10 border-border">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="acumular" className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest cursor-pointer">
+                      Acumular filtros
+                    </Label>
+                    <Switch id="acumular" checked={isStacking} onCheckedChange={setIsStacking} />
+                  </div>
+                  <p className="text-[9px] text-muted-foreground leading-snug">
+                    {isStacking
+                      ? "Cada filtro se aplica sobre el resultado anterior. La intensidad deja de reaplicarse sola: elegí el valor y volvé a tocar el filtro."
+                      : "Cada filtro parte siempre de la imagen original."}
+                  </p>
+                </Card>
+              )}
 
               {activeFilterId && (
                 <Card className="p-4 space-y-5 shadow-inner bg-muted/10 border-border">
