@@ -24,10 +24,18 @@ authors:
     city: "San Fernando del Valle de Catamarca"
     country: AR
 version: "3.4.0"
-date-released: "2026-08-07"
+date-released: "2026-08-08"
 license: GPL-3.0-or-later
 repository-code: "https://github.com/emilios81/opuntia-movil"
 url: "https://emilios81.github.io/opuntia-movil/"
+doi: "10.5281/zenodo.21845133"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.21845133"
+    description: "DOI concepto: siempre apunta a la última versión"
+  - type: doi
+    value: "10.5281/zenodo.21845134"
+    description: "DOI de la versión 3.4.0"
 keywords:
   - arte rupestre
   - rock art

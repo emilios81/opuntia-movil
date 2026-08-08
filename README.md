@@ -1,5 +1,8 @@
 # OpuntiaColor v3.4.0 — versión móvil
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21845133.svg)](https://doi.org/10.5281/zenodo.21845133)
+[![Licencia: GPL v3+](https://img.shields.io/badge/licencia-GPL--3.0--or--later-blue.svg)](LICENSE)
+
 Realce de arte rupestre en el campo. Doce filtros de decorrelación —el mismo
 motor que la versión de escritorio— sobre fotos o sobre la cámara en vivo, con
 selección de zona y reportes PDF con EXIF y GPS.
@@ -84,9 +87,19 @@ ejecución, y las dependencias son solo las que el código importa de verdad.
 motor de filtros, así que es obra derivada y comparte licencia. Ver
 [LICENSE](LICENSE).
 
-Si la usás en una publicación, los datos de cita están en
-[CITATION.cff](CITATION.cff). El DOI de referencia es el del proyecto de
-escritorio: [10.5281/zenodo.21796290](https://doi.org/10.5281/zenodo.21796290).
+Si la usás en una publicación, citá el **DOI de concepto**, que resuelve siempre
+a la última versión:
+
+> [10.5281/zenodo.21845133](https://doi.org/10.5281/zenodo.21845133)
+
+El DOI de la versión 3.4.0 en particular es
+[10.5281/zenodo.21845134](https://doi.org/10.5281/zenodo.21845134). Los datos
+completos de cita están en [CITATION.cff](CITATION.cff), y GitHub los ofrece ya
+formateados en el botón *Cite this repository*.
+
+El depósito declara `isDerivedFrom` sobre
+[10.5281/zenodo.21796290](https://doi.org/10.5281/zenodo.21796290), el DOI del
+proyecto de escritorio del que porta el motor.
 
 ## Nota metodológica
 
