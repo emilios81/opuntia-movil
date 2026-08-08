@@ -1,0 +1,55 @@
+{
+  "title": "OpuntiaColor móvil: aplicación web progresiva para el realce digital de arte rupestre en el campo",
+  "description": "<p>Versión móvil de OPC (OpuntiaColor), aplicación web progresiva (PWA) para el realce y la documentación de arte rupestre en terreno. Implementa el mismo motor que la versión de escritorio —decorrelation stretching en RGB y en CIE-LAB, realce selectivo de pigmentos, ecualización adaptativa de histograma con límite de contraste (CLAHE) y detección de micro-relieve para grabados— con salida idéntica píxel a píxel.</p><p>Suma prestaciones pensadas para el trabajo de campo: decorrelación en tiempo real sobre la cámara del dispositivo, para explorar un panel antes de fotografiarlo; selección de zona por rectángulo, círculo o mano alzada, con las estadísticas de decorrelación calculadas sobre la región marcada; y lectura en pantalla de los metadatos EXIF y GPS de la fotografía, de modo que la ausencia de coordenadas se detecte estando todavía en el sitio.</p><p>El procesamiento se realiza íntegramente en el dispositivo: las imágenes no se transmiten a ningún servidor y, una vez instalada, la aplicación funciona sin conexión a internet, incluidas las tipografías y los iconos.</p><p>Desarrollada en el LATDAA (Laboratorio de Tecnologías Digitales Aplicadas a la Arqueología), Escuela de Arqueología, Universidad Nacional de Catamarca.</p>",
+  "upload_type": "software",
+  "license": "GPL-3.0-or-later",
+  "access_right": "open",
+  "version": "3.4.0",
+  "language": "spa",
+  "creators": [
+    {
+      "name": "Villafañez, Emilio Alejandro",
+      "affiliation": "LATDAA, Escuela de Arqueología, Universidad Nacional de Catamarca / CONICET",
+      "orcid": "0000-0002-2471-1558"
+    }
+  ],
+  "keywords": [
+    "arte rupestre",
+    "rock art",
+    "decorrelation stretch",
+    "arqueología digital",
+    "procesamiento digital de imagen",
+    "documentación del patrimonio",
+    "aplicación web progresiva",
+    "trabajo de campo",
+    "CIE-LAB",
+    "CLAHE",
+    "Noroeste Argentino"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/emilios81/opuntia-movil",
+      "relation": "isSupplementTo",
+      "resource_type": "software",
+      "scheme": "url"
+    },
+    {
+      "identifier": "10.5281/zenodo.21796290",
+      "relation": "isDerivedFrom",
+      "resource_type": "software",
+      "scheme": "doi"
+    },
+    {
+      "identifier": "https://emilios81.github.io/opuntia-movil/",
+      "relation": "isIdenticalTo",
+      "resource_type": "software",
+      "scheme": "url"
+    },
+    {
+      "identifier": "10.1016/0034-4257(86)90044-1",
+      "relation": "cites",
+      "resource_type": "publication-article",
+      "scheme": "doi"
+    }
+  ]
+}
