@@ -78,6 +78,16 @@ Auth, flujos de genkit y treinta y tantos componentes de shadcn que nunca se
 usaron. Nada de eso quedó: la app no habla con ninguna red en tiempo de
 ejecución, y las dependencias son solo las que el código importa de verdad.
 
+## Licencia y cita
+
+**GPL-3.0-or-later**, la misma que la versión de escritorio: esta app porta su
+motor de filtros, así que es obra derivada y comparte licencia. Ver
+[LICENSE](LICENSE).
+
+Si la usás en una publicación, los datos de cita están en
+[CITATION.cff](CITATION.cff). El DOI de referencia es el del proyecto de
+escritorio: [10.5281/zenodo.21796290](https://doi.org/10.5281/zenodo.21796290).
+
 ## Nota metodológica
 
 La intensidad significa cosas distintas en cada filtro y no es comparable entre

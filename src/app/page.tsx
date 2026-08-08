@@ -569,7 +569,16 @@ export default function OpuntiaColor() {
                 <p>· <strong>Algoritmos Precisos</strong> — Alineación científica total con la referencia v3.4.0.</p>
                 <p>· <strong>Estadísticas por zona</strong> — Con una zona marcada, la decorrelación (CRGB, DS-LAB, LDS, YBK) se calcula con los datos de esa zona: mejor separación de pigmentos locales, como en DStretch.</p>
                 <p>· <strong>Modo PWA</strong> — Funcionamiento 100% offline tras la instalación.</p>
-                <div className="pt-4 border-t border-border text-[10px] opacity-70 italic text-center">
+                {/* Aviso legal de la GPL: la licencia pide que una interfaz
+                    interactiva muestre de dónde salió el programa, bajo qué
+                    términos y que no tiene garantía. */}
+                <p className="pt-4 border-t border-border text-[10px] opacity-70 text-center leading-relaxed">
+                  Software libre bajo{" "}
+                  <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noreferrer" className="underline">GPL-3.0-or-later</a>
+                  , sin garantía de ningún tipo. Código fuente en{" "}
+                  <a href="https://github.com/emilios81/opuntia-movil" target="_blank" rel="noreferrer" className="underline">github.com/emilios81/opuntia-movil</a>.
+                </p>
+                <div className="text-[10px] opacity-70 italic text-center">
                   Dr. Emilio A. Villafañez · LATDAA · Fund. Félix de Azara · Universidad Nacional de Catamarca (UNCA), Argentina
                 </div>
               </div>
