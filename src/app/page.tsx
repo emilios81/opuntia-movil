@@ -38,6 +38,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { CompareSlider } from '@/components/CompareSlider';
+import { OpuntiaLogo } from '@/components/OpuntiaLogo';
 import * as OPC from '@/lib/image-processing';
 import { extractMetadata, type ImageMetadata } from '@/lib/exif-utils';
 import { generateReport } from '@/lib/pdf-report';
@@ -546,6 +547,9 @@ export default function OpuntiaColor() {
       <header className="bg-primary text-primary-foreground h-16 px-4 sm:px-6 flex justify-between items-center shadow-lg sticky top-0 z-50">
         <div className="flex flex-col">
           <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+            {/* El logo estaba escrito y sin usar en ningún lado desde el
+                principio. Es la misma identidad que el icono de la PWA. */}
+            <OpuntiaLogo className="w-7 h-7 shrink-0" />
             OpuntiaColor <span className="bg-accent text-white text-[10px] px-1.5 py-0.5 rounded-full">v3.4.0</span>
           </h1>
         </div>

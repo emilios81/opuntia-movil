@@ -17,7 +17,7 @@ const sourceCodePro = Source_Code_Pro({ subsets: ['latin'], variable: '--font-co
 
 export const metadata: Metadata = {
   title: 'OpuntiaColor v3.4.0',
-  description: 'Procesamiento avanzado de arte rupestre para arqueología profesional.',
+  description: 'Realce de arte rupestre en el campo: doce filtros de decorrelación, selección de zona y reportes PDF con EXIF y GPS. Todo el procesamiento ocurre en el dispositivo y funciona sin conexión.',
   manifest: `${base}/manifest.json`,
   icons: {
     icon: `${base}/icon-192.png`,
@@ -53,9 +53,6 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body className="font-body antialiased bg-background text-foreground overflow-x-hidden">
-        {/* Sin proveedor de Firebase: nada en la app lo usa, y montarlo
-            inicializaba Auth y Firestore —cientos de KB— en cada arranque.
-            El código sigue en src/firebase/ por si algún día hace falta. */}
         <PWARegistration />
         {children}
         <Toaster />

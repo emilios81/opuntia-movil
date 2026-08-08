@@ -1,7 +1,7 @@
 {
   "name": "OpuntiaColor v3.4.0",
   "short_name": "OpuntiaColor",
-  "description": "Procesamiento avanzado de arte rupestre para arqueología profesional.",
+  "description": "Realce de arte rupestre en el campo: doce filtros de decorrelación, selección de zona y reportes PDF con EXIF y GPS. Todo el procesamiento ocurre en el dispositivo y funciona sin conexión.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

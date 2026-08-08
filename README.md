@@ -1,10 +1,16 @@
 # OpuntiaColor v3.4.0 — versión móvil
 
-Procesamiento de arte rupestre para arqueología profesional. PWA (Progressive
-Web App) pensada para funcionar sin conexión en el campo, instalable en celular
-o tablet.
+Realce de arte rupestre en el campo. Doce filtros de decorrelación —el mismo
+motor que la versión de escritorio— sobre fotos o sobre la cámara en vivo, con
+selección de zona y reportes PDF con EXIF y GPS.
 
-Versión de escritorio: <https://emilios81.github.io/opuntiacolor/>
+Es una PWA: se instala en el celular o la tablet y, después de la primera
+visita, **funciona entera sin conexión**. Todo el procesamiento ocurre en el
+dispositivo sobre `canvas`; no hay servidor, no se sube ninguna imagen a ningún
+lado y no hace falta señal para trabajar.
+
+**App:** <https://emilios81.github.io/opuntia-movil/>
+**Versión de escritorio:** <https://emilios81.github.io/opuntiacolor/>
 
 ## Características
 
@@ -55,13 +61,22 @@ El sitio vive en una subcarpeta (`/opuntia-movil/`), definida por `basePath` en
 > La cámara y la instalación como app requieren HTTPS. GitHub Pages lo provee;
 > abrir el sitio por IP de red local (http://) deja el Modo Live sin funcionar.
 
-## Andamiaje sin usar
+## Estructura
 
-`src/firebase/` y `src/ai/` (genkit) quedaron del andamiaje inicial de Firebase
-Studio: ningún componente de la app los importa, así que no entran en el
-paquete que se publica. Lo mismo vale para varios componentes de
-`src/components/ui/` (carousel, chart, form, sidebar, table…) y sus
-dependencias. Están si algún día hacen falta, pero la app no los toca.
+```
+src/lib/image-processing.ts   motor de los doce filtros
+src/lib/exif-utils.ts         lectura de EXIF y GPS
+src/lib/pdf-report.ts         armado del reporte
+src/app/page.tsx              interfaz completa
+src/components/               CompareSlider, logo, registro de la PWA
+src/components/ui/            los ocho componentes de shadcn que se usan
+public/sw.js                  service worker (el que da el modo offline)
+```
+
+El proyecto nació de un andamiaje de Firebase Studio que arrastraba Firestore,
+Auth, flujos de genkit y treinta y tantos componentes de shadcn que nunca se
+usaron. Nada de eso quedó: la app no habla con ninguna red en tiempo de
+ejecución, y las dependencias son solo las que el código importa de verdad.
 
 ## Nota metodológica
 
