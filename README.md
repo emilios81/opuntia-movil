@@ -24,7 +24,11 @@ Versión de escritorio: <https://emilios81.github.io/opuntiacolor/>
 - **Sin conexión** — tras la primera visita la app queda completa en el
   dispositivo: código, tipografías e iconos. No pide nada a la red para
   procesar.
-- **Reportes PDF** con metadatos EXIF y GPS de la foto original.
+- **Metadatos a la vista** — coordenadas, altitud, fecha de captura y equipo se
+  leen del EXIF y se muestran en pantalla, con las coordenadas copiables al
+  portapapeles. Si la foto no las trae, lo dice: estando todavía en el sitio se
+  puede repetir la toma.
+- **Reportes PDF** con esos mismos metadatos y las dos imágenes.
 
 ## Desarrollo
 
@@ -51,11 +55,13 @@ El sitio vive en una subcarpeta (`/opuntia-movil/`), definida por `basePath` en
 > La cámara y la instalación como app requieren HTTPS. GitHub Pages lo provee;
 > abrir el sitio por IP de red local (http://) deja el Modo Live sin funcionar.
 
-## Pendiente
+## Andamiaje sin usar
 
-Los metadatos EXIF y GPS de la foto se leen y salen en el reporte PDF, pero no
-se muestran en pantalla: no hay forma de comprobar en el momento si la foto
-traía coordenadas.
+`src/firebase/` y `src/ai/` (genkit) quedaron del andamiaje inicial de Firebase
+Studio: ningún componente de la app los importa, así que no entran en el
+paquete que se publica. Lo mismo vale para varios componentes de
+`src/components/ui/` (carousel, chart, form, sidebar, table…) y sus
+dependencias. Están si algún día hacen falta, pero la app no los toca.
 
 ## Nota metodológica
 

@@ -9,6 +9,8 @@ import {
   Maximize2,
   FileImage,
   Zap,
+  MapPin,
+  Copy,
   Sun,
   Moon,
   PlusCircle,
@@ -69,6 +71,21 @@ const SELECTION_TOOLS: { id: Exclude<SelectionType, null>; name: string; Icon: t
   { id: "circle", name: "Círculo", Icon: CircleIcon },
   { id: "freehand", name: "Mano alzada", Icon: Pencil },
 ];
+
+// EXIF guarda la fecha como "2026:08:07 12:30:45", que no es lo que espera
+// Date.parse ni lo que nadie quiere leer. Si viene con otro formato se muestra
+// tal cual: mejor el dato crudo que un hueco.
+function formatearCaptura(raw?: string): string | null {
+  if (!raw) return null;
+  const m = raw.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : raw;
+}
+
+// exif-js devuelve los racionales como objetos Number, no como primitivos.
+function aNumero(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 
 const PRESETS = [
   { label: "Sutil", value: 0.4 },
@@ -499,6 +516,28 @@ export default function OpuntiaColor() {
     setSelection(null);
     setSelectionTool(null);
     setFrozenStore({});
+    setMetadata(null);
+  };
+
+  // Los metadatos ya se leían para el reporte PDF, pero solo se veían al
+  // abrirlo. En el campo hace falta saber ANTES si la foto trae coordenadas:
+  // si no las trae y todavía estás en el sitio, se puede repetir la toma.
+  const lat = aNumero(metadata?.lat), lng = aNumero(metadata?.lng);
+  const hayGPS = lat !== null && lng !== null;
+  const altitud = aNumero(metadata?.altitude);
+  const captura = formatearCaptura(metadata?.date);
+  const equipo = [metadata?.make, metadata?.model].filter(Boolean).join(" ").trim();
+
+  const copiarCoordenadas = async () => {
+    if (!hayGPS) return;
+    const texto = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    try {
+      await navigator.clipboard.writeText(texto);
+      toast({ title: "Coordenadas copiadas", description: texto });
+    } catch {
+      // Sin permiso de portapapeles el dato sigue estando a la vista.
+      toast({ title: "No se pudo copiar", description: texto, variant: "destructive" });
+    }
   };
 
   return (
@@ -851,6 +890,53 @@ export default function OpuntiaColor() {
                       ? "Cada filtro se aplica sobre el resultado anterior. La intensidad deja de reaplicarse sola: elegí el valor y volvé a tocar el filtro."
                       : "Cada filtro parte siempre de la imagen original."}
                   </p>
+                </Card>
+              )}
+
+              {!isLiveMode && metadata && (
+                <Card className="p-4 space-y-3 shadow-inner bg-muted/10 border-border">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Metadatos de la foto</label>
+                    {hayGPS && (
+                      <button
+                        onClick={copiarCoordenadas}
+                        className="flex items-center gap-1 text-[9px] font-bold text-accent hover:bg-accent/10 px-2 py-0.5 rounded transition-colors"
+                      >
+                        <Copy className="w-3 h-3" /> Copiar
+                      </button>
+                    )}
+                  </div>
+                  {hayGPS ? (
+                    <div className="flex items-start gap-2">
+                      <MapPin className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="font-code text-[11px] font-bold leading-tight break-all">
+                          {lat.toFixed(6)}, {lng.toFixed(6)}
+                        </p>
+                        {altitud !== null && (
+                          <p className="font-code text-[9px] text-muted-foreground">{Math.round(altitud)} m s. n. m.</p>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2">
+                      <MapPin className="w-4 h-4 text-muted-foreground/40 shrink-0 mt-0.5" />
+                      <p className="text-[10px] text-muted-foreground leading-snug">
+                        La foto no trae coordenadas. Suele pasar con el GPS de la cámara apagado,
+                        o si el archivo pasó por una app de mensajería que borra los metadatos.
+                      </p>
+                    </div>
+                  )}
+                  <dl className="text-[9px] font-code space-y-1 border-t border-border pt-2">
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted-foreground shrink-0">Captura</dt>
+                      <dd className="text-right truncate">{captura ?? "—"}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted-foreground shrink-0">Equipo</dt>
+                      <dd className="text-right truncate">{equipo || "—"}</dd>
+                    </div>
+                  </dl>
                 </Card>
               )}
 
