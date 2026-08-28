@@ -1,12 +1,17 @@
 
 /**
- * CORE IMAGE PROCESSING LOGIC - OPUNTIA COLOR v3.4.0
+ * CORE IMAGE PROCESSING LOGIC - OPUNTIA COLOR v3.5.0
  * Implementation strictly aligned with scientific reference standards.
  */
 
 // --- HELPERS ESTADÍSTICOS ---
 
-export function meanCov3(ch1: Float32Array, ch2: Float32Array, ch3: Float32Array, mask: Uint8Array | null) {
+// Los canales pueden venir en simple o doble precisión: los filtros que se
+// comparan contra el escritorio usan Float64Array (ver la nota de abajo), y los
+// demás siguen en Float32Array, que para valores enteros da exactamente lo mismo.
+export type Canal = Float32Array | Float64Array;
+
+export function meanCov3(ch1: Canal, ch2: Canal, ch3: Canal, mask: Uint8Array | null) {
   const n = ch1.length;
   let m1 = 0, m2 = 0, m3 = 0, count = 0;
   
@@ -41,7 +46,7 @@ export function meanCov3(ch1: Float32Array, ch2: Float32Array, ch3: Float32Array
   };
 }
 
-export function meanStd1(arr: Float32Array, mask: Uint8Array | null) {
+export function meanStd1(arr: Canal, mask: Uint8Array | null) {
   const n = arr.length;
   let sum = 0, count = 0;
   for (let i = 0; i < n; i++) {
@@ -55,6 +60,30 @@ export function meanStd1(arr: Float32Array, mask: Uint8Array | null) {
   }
   const std = Math.sqrt(varSum / count);
   return { mean, std: std || 1 };
+}
+
+// Vallas de Tukey (Q1 - k·IQR, Q3 + k·IQR) de un canal. Los cuartiles salen de
+// un histograma de 4096 bins en una sola pasada: no hace falta ordenar la imagen.
+// A diferencia del mínimo y el máximo absolutos, no se mueven porque en el
+// encuadre entre una tarjeta de color, una mano o un brillo especular.
+export function tukeyFences(arr: Float64Array, mask: Uint8Array | null, k: number) {
+  const n = arr.length;
+  let mn = Infinity, mx = -Infinity, cnt = 0;
+  for (let i = 0; i < n; i++) { if (mask && !mask[i]) continue; const v = arr[i]; if (v < mn) mn = v; if (v > mx) mx = v; cnt++; }
+  if (cnt === 0) { mask = null; cnt = n; for (let i = 0; i < n; i++) { const v = arr[i]; if (v < mn) mn = v; if (v > mx) mx = v; } }
+  const rng = mx - mn;
+  if (!(rng > 0)) return { lo: mn, hi: mx };
+  const B = 4096, hist = new Int32Array(B), sc = (B - 1) / rng;
+  for (let i = 0; i < n; i++) { if (mask && !mask[i]) continue; hist[((arr[i] - mn) * sc) | 0]++; }
+  const oq1 = 0.25 * cnt, oq3 = 0.75 * cnt;
+  let acc = 0, q1 = mn, q3 = mx, got1 = false;
+  for (let b = 0; b < B; b++) {
+    acc += hist[b];
+    if (!got1 && acc >= oq1) { q1 = mn + b / sc; got1 = true; }
+    if (acc >= oq3) { q3 = mn + (b + 1) / sc; break; }
+  }
+  const iqr = q3 - q1;
+  return { lo: q1 - k * iqr, hi: q3 + k * iqr };
 }
 
 export function jacobiEigen3(cov: number[][]) {
@@ -148,7 +177,7 @@ export function lab2rgb(L: number, a: number, b: number): [number, number, numbe
   return [Math.round(g(rr) * 255), Math.round(g(gg) * 255), Math.round(g(bb) * 255)];
 }
 
-// --- FILTROS v3.4.0 ---
+// --- FILTROS v3.5.0 ---
 
 export function red(imageData: ImageData, I: number, mask: Uint8Array | null) {
   const data = imageData.data, n = data.length / 4, out = new Uint8ClampedArray(data.length);
@@ -238,7 +267,7 @@ export function bichrome(imageData: ImageData, I: number, mask: Uint8Array | nul
 
 export function crgb(imageData: ImageData, I: number, mask: Uint8Array | null, store: any) {
   const data = imageData.data, n = data.length / 4, out = new Uint8ClampedArray(data.length);
-  const R = new Float32Array(n), G = new Float32Array(n), B = new Float32Array(n);
+  const R = new Float64Array(n), G = new Float64Array(n), B = new Float64Array(n);
   for (let i = 0; i < n; i++) { R[i] = data[i*4]; G[i] = data[i*4+1]; B[i] = data[i*4+2]; }
 
   if (!store.frozen) {
@@ -249,7 +278,7 @@ export function crgb(imageData: ImageData, I: number, mask: Uint8Array | null, s
   const { means: m, vectors: v, stds: s } = store.frozen;
 
   const clipStd = Math.max(0.8, 3.5 / I);
-  const pcs = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
+  const pcs = [new Float64Array(n), new Float64Array(n), new Float64Array(n)];
   
   for (let i = 0; i < n; i++) {
     const d = [R[i] - m[0], G[i] - m[1], B[i] - m[2]];
@@ -273,7 +302,7 @@ export function crgb(imageData: ImageData, I: number, mask: Uint8Array | null, s
 
 export function dslab(imageData: ImageData, I: number, mask: Uint8Array | null, store: any) {
   const data = imageData.data, n = data.length / 4, out = new Uint8ClampedArray(data.length);
-  const L = new Float32Array(n), A = new Float32Array(n), B = new Float32Array(n);
+  const L = new Float64Array(n), A = new Float64Array(n), B = new Float64Array(n);
   for (let i = 0; i < n; i++) [L[i], A[i], B[i]] = rgb2lab(data[i*4], data[i*4+1], data[i*4+2]);
 
   if (!store.frozen) {
@@ -284,7 +313,7 @@ export function dslab(imageData: ImageData, I: number, mask: Uint8Array | null, 
   const { means: m, vectors: v, stds: s } = store.frozen;
 
   const clipStd = Math.max(0.8, 3.5 / I);
-  const pcs = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
+  const pcs = [new Float64Array(n), new Float64Array(n), new Float64Array(n)];
   for (let i = 0; i < n; i++) {
     const d = [L[i] - m[0], A[i] - m[1], B[i] - m[2]];
     for (let k = 0; k < 3; k++) pcs[k][i] = (v[k][0] * d[0] + v[k][1] * d[1] + v[k][2] * d[2]) / s[k];
@@ -303,13 +332,38 @@ export function dslab(imageData: ImageData, I: number, mask: Uint8Array | null, 
   return new ImageData(out, imageData.width, imageData.height);
 }
 
+// Doble precisión en los cuatro filtros de decorrelación (CRGB, DS-LAB, LDS,
+// YBK): el escritorio los calcula en Float64 y acá estaban en Float32. Sobre
+// valores fraccionarios —L*a*b*, Y/Cb/Cr, componentes principales— el error de
+// ~1e-5 de Float32 alcanza para que algún píxel caiga del otro lado del redondeo
+// final y la salida deje de coincidir. Es un nivel en un píxel suelto, pero
+// rompe la comparación byte a byte, que es lo único que garantiza que una foto
+// procesada en el celular y otra en la computadora sean el mismo dato.
+
+// Factor de las vallas de Tukey en la normalización de LDS. k = 3 es la valla
+// "far out" clásica: sobre datos normales recorta menos del 1% de los píxeles,
+// y sobre una foto con tarjeta de color recorta la tarjeta sin tocar la roca.
+const LDS_TUKEY_K = 3;
+
 export function lds(imageData: ImageData, I: number, mask: Uint8Array | null, store: any) {
   const data = imageData.data, n = data.length / 4, out = new Uint8ClampedArray(data.length);
-  const R = new Float32Array(n), G = new Float32Array(n), B = new Float32Array(n);
+  const R = new Float64Array(n), G = new Float64Array(n), B = new Float64Array(n);
   for (let i = 0; i < n; i++) { R[i] = data[i*4]; G[i] = data[i*4+1]; B[i] = data[i*4+2]; }
 
+  // Dos máscaras distintas: `maskStats` acota de dónde salen las estadísticas
+  // (medias, covarianza, vallas) y `mask` decide qué píxeles se reemplazan al
+  // final. Una selección vacía no puede acotar nada, pero sí sigue impidiendo
+  // que se escriba: así se comporta el escritorio, donde la composición ocurre
+  // fuera del filtro.
+  let maskStats = mask;
+  if (maskStats) {
+    let cnt = 0;
+    for (let i = 0; i < n; i++) if (maskStats[i]) cnt++;
+    if (cnt === 0) maskStats = null;
+  }
+
   if (!store.frozen) {
-    const { means, cov } = meanCov3(R, G, B, mask);
+    const { means, cov } = meanCov3(R, G, B, maskStats);
     const { values, vectors } = jacobiEigen3(cov);
     const stds = values.map(v => Math.sqrt(Math.max(v, 1e-10)));
     store.frozen = { means, vectors, stds };
@@ -323,7 +377,10 @@ export function lds(imageData: ImageData, I: number, mask: Uint8Array | null, st
   const gamma = Math.min(2.0, I / 1.5);
   const w = stds.map((s: number) => Math.pow(tgtStd / s, gamma));
 
-  const outR = new Float32Array(n), outG = new Float32Array(n), outB = new Float32Array(n);
+  // Float64 y no Float32: la normalización de abajo busca la ganancia por
+  // bisección y redondea al final, así que un error de 1e-5 alcanza para que
+  // algún píxel caiga del otro lado y deje de coincidir con el escritorio.
+  const outR = new Float64Array(n), outG = new Float64Array(n), outB = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     const d = [R[i] - m[0], G[i] - m[1], B[i] - m[2]];
     const pcs = v.map((vec: number[]) => (vec[0] * d[0] + vec[1] * d[1] + vec[2] * d[2]));
@@ -332,21 +389,59 @@ export function lds(imageData: ImageData, I: number, mask: Uint8Array | null, st
     outB[i] = m[2] + v[0][2]*pcs[0]*w[0] + v[1][2]*pcs[1]*w[1] + v[2][2]*pcs[2]*w[2];
   }
 
-  // Los valores reproyectados no están acotados a 0-255: el rango arranca en
-  // ±Infinity o el mínimo/máximo real quedaría recortado por la inicialización.
-  let minR=Infinity, maxR=-Infinity, minG=Infinity, maxG=-Infinity, minB=Infinity, maxB=-Infinity;
-  for (let i = 0; i < n; i++) {
-    if (!mask || mask[i]) {
-      if (outR[i] < minR) minR = outR[i]; if (outR[i] > maxR) maxR = outR[i];
-      if (outG[i] < minG) minG = outG[i]; if (outG[i] > maxG) maxG = outG[i];
-      if (outB[i] < minB) minB = outB[i]; if (outB[i] > maxB) maxB = outB[i];
+  // Normalización robusta con ganancia y desplazamiento COMUNES (v3.5.0)
+  //
+  // Hasta v3.4.0 cada canal se estiraba entre su mínimo y su máximo absolutos.
+  // Eso arrastraba dos problemas encadenados:
+  //
+  //  1. El blanqueo amplifica la componente principal más chica —la cromática,
+  //     con σ típico de 1 a 6 frente a 40 o 60 de la primera—, así que cualquier
+  //     píxel extremo queda disparado. En una foto de campo con tarjeta de color,
+  //     mano o brillo especular en el encuadre, ese píxel fijaba el mínimo y el
+  //     máximo y toda la superficie rupestre quedaba comprimida en un quinto de
+  //     la escala: la imagen salía plana y solo la tarjeta conservaba color.
+  //
+  //  2. Estirar cada canal por separado corre la media de cada uno a un lugar
+  //     distinto y rompe la relación de tonos. La roca marrón viraba a violeta,
+  //     justo lo contrario de lo que LDS promete —reproyectar al espacio original
+  //     para conservar un aspecto natural—.
+  //
+  // Ahora el rango se toma de las vallas de Tukey (Q1 - 3·IQR, Q3 + 3·IQR), que
+  // no se mueven por más extremo que sea un objeto del encuadre, y la salida se
+  // arma con una ganancia s y un desplazamiento o COMUNES a los tres canales:
+  //
+  //     salida_c  =  (componente_c − media_c) · s  +  media_c + o
+  //
+  // Al ser comunes, las diferencias entre canales se escalan por igual y el tono
+  // se conserva. s es la mayor ganancia para la que existe un desplazamiento que
+  // meta las vallas dentro de 0–255, y o reparte el margen sobrante entre las dos
+  // puntas. Lo que queda fuera de las vallas se recorta: son los extremos, no la
+  // escena.
+  let gain: number, offset: number;
+  if (store.frozen.gain !== undefined) {
+    gain = store.frozen.gain; offset = store.frozen.offset;
+  } else {
+    const canales = [outR, outG, outB];
+    const hi = [0, 0, 0], lo = [0, 0, 0];
+    for (let ch = 0; ch < 3; ch++) {
+      const f = tukeyFences(canales[ch], maskStats, LDS_TUKEY_K);
+      hi[ch] = f.hi - m[ch]; lo[ch] = f.lo - m[ch];
     }
+    const alto = (s: number) => Math.max(m[0] + s*hi[0], m[1] + s*hi[1], m[2] + s*hi[2]);
+    const bajo = (s: number) => Math.min(m[0] + s*lo[0], m[1] + s*lo[1], m[2] + s*lo[2]);
+    // s = 0 siempre es factible (el ancho es la dispersión de las medias, < 255)
+    let a = 0, b = 1000;
+    for (let it = 0; it < 60; it++) { const mid = (a + b) / 2; if (alto(mid) - bajo(mid) <= 255) a = mid; else b = mid; }
+    gain = a; offset = ((255 - alto(gain)) + (0 - bajo(gain))) / 2;
+    store.frozen.gain = gain; store.frozen.offset = offset;
   }
+
+  const baseR = m[0] + offset, baseG = m[1] + offset, baseB = m[2] + offset;
   for (let i = 0; i < n; i++) {
     if (mask && !mask[i]) { out.set(data.slice(i * 4, i * 4 + 4), i * 4); continue; }
-    out[i*4] = Math.round(((outR[i] - minR) / (maxR - minR || 1)) * 255);
-    out[i*4+1] = Math.round(((outG[i] - minG) / (maxG - minG || 1)) * 255);
-    out[i*4+2] = Math.round(((outB[i] - minB) / (maxB - minB || 1)) * 255);
+    out[i*4]   = Math.max(0, Math.min(255, Math.round((outR[i] - m[0]) * gain + baseR)));
+    out[i*4+1] = Math.max(0, Math.min(255, Math.round((outG[i] - m[1]) * gain + baseG)));
+    out[i*4+2] = Math.max(0, Math.min(255, Math.round((outB[i] - m[2]) * gain + baseB)));
     out[i*4+3] = 255;
   }
   return new ImageData(out, imageData.width, imageData.height);
@@ -427,7 +522,7 @@ export function relief(imageData: ImageData, I: number, mask: Uint8Array | null)
 
 export function ybk(imageData: ImageData, I: number, mask: Uint8Array | null, store: any) {
   const data = imageData.data, n = data.length / 4, out = new Uint8ClampedArray(data.length);
-  const Y = new Float32Array(n), Cb = new Float32Array(n), Cr = new Float32Array(n);
+  const Y = new Float64Array(n), Cb = new Float64Array(n), Cr = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     Y[i] = 0.299*data[i*4] + 0.587*data[i*4+1] + 0.114*data[i*4+2];
     Cb[i] = 128 - 0.168736*data[i*4] - 0.331264*data[i*4+1] + 0.5*data[i*4+2];

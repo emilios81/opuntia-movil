@@ -550,7 +550,7 @@ export default function OpuntiaColor() {
             {/* El logo estaba escrito y sin usar en ningún lado desde el
                 principio. Es la misma identidad que el icono de la PWA. */}
             <OpuntiaLogo className="w-7 h-7 shrink-0" />
-            OpuntiaColor <span className="bg-accent text-white text-[10px] px-1.5 py-0.5 rounded-full">v3.4.0</span>
+            OpuntiaColor <span className="bg-accent text-white text-[10px] px-1.5 py-0.5 rounded-full">v3.5.0</span>
           </h1>
         </div>
         <div className="flex gap-2">
@@ -562,11 +562,11 @@ export default function OpuntiaColor() {
             </DialogTrigger>
             <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>OPC v3.4.0 — Motor de Campo</DialogTitle>
+                <DialogTitle>OPC v3.5.0 — Motor de Campo</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 text-sm py-4">
                 <p>· <strong>Decorrelación en Vivo</strong> — Exploración espectral dinámica mediante cámara.</p>
-                <p>· <strong>Algoritmos Precisos</strong> — Alineación científica total con la referencia v3.4.0.</p>
+                <p>· <strong>Algoritmos Precisos</strong> — Alineación científica total con la referencia v3.5.0.</p>
                 <p>· <strong>Estadísticas por zona</strong> — Con una zona marcada, la decorrelación (CRGB, DS-LAB, LDS, YBK) se calcula con los datos de esa zona: mejor separación de pigmentos locales, como en DStretch.</p>
                 <p>· <strong>Modo PWA</strong> — Funcionamiento 100% offline tras la instalación.</p>
                 {/* Aviso legal de la GPL: la licencia pide que una interfaz
@@ -603,7 +603,7 @@ export default function OpuntiaColor() {
             {!imageSrc ? (
               <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground py-20">
                 <FileImage className="w-16 h-16 opacity-10 mb-4" />
-                <p className="text-sm font-bold uppercase tracking-widest">OpuntiaColor v3.4.0</p>
+                <p className="text-sm font-bold uppercase tracking-widest">OpuntiaColor v3.5.0</p>
                 <p className="text-[10px] opacity-60">Sube una imagen o inicia el Modo Live</p>
               </div>
             ) : (
@@ -726,7 +726,7 @@ export default function OpuntiaColor() {
                         ? (liveSize.w ? `${liveSize.w} x ${liveSize.h} PX` : "—")
                         : `${imageSize.w} x ${imageSize.h} PX`}
                     </span>
-                    <span className="hidden sm:flex items-center gap-1"><Zap className="w-3 h-3 text-accent" /> Motor v3.4.0</span>
+                    <span className="hidden sm:flex items-center gap-1"><Zap className="w-3 h-3 text-accent" /> Motor v3.5.0</span>
                     {isStacking && processedSrc && <span className="flex items-center gap-1 text-accent font-bold animate-pulse"><StackingIcon className="w-3 h-3" /> STACK ACTIVO</span>}
                   </div>
                   {(processedSrc || isLiveMode) && (
@@ -994,7 +994,7 @@ export default function OpuntiaColor() {
         <div className="space-y-2 text-[10px] text-muted-foreground tracking-tight font-medium max-w-2xl mx-auto">
           <p>Dr. Emilio A. Villafañez · LATDAA · Fund. Félix de Azara · Universidad Nacional de Catamarca (UNCA), Argentina</p>
           <div className="flex items-center justify-center gap-4 pt-4 border-t border-border/50">
-            <span className="opacity-60 font-code uppercase tracking-widest font-bold">OpuntiaColor v3.4.0</span>
+            <span className="opacity-60 font-code uppercase tracking-widest font-bold">OpuntiaColor v3.5.0</span>
             <span className="bg-accent/10 text-accent px-2 py-0.5 rounded-full font-bold">OFFLINE READY</span>
           </div>
         </div>

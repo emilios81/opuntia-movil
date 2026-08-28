@@ -16,7 +16,7 @@ const alegreya = Alegreya({ subsets: ['latin'], variable: '--font-alegreya', dis
 const sourceCodePro = Source_Code_Pro({ subsets: ['latin'], variable: '--font-code', display: 'swap' });
 
 export const metadata: Metadata = {
-  title: 'OpuntiaColor v3.4.0',
+  title: 'OpuntiaColor v3.5.0',
   description: 'Realce de arte rupestre en el campo: doce filtros de decorrelación, selección de zona y reportes PDF con EXIF y GPS. Todo el procesamiento ocurre en el dispositivo y funciona sin conexión.',
   manifest: `${base}/manifest.json`,
   icons: {
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'OpuntiaColor v3.4.0',
+    title: 'OpuntiaColor v3.5.0',
   },
 };
 

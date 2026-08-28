@@ -26,7 +26,7 @@ export async function generateReport(
   
   doc.setFont(serifFont, 'italic');
   doc.setFontSize(14);
-  doc.text('Advanced Archaeological Rock Art Report v3.4.0', pageWidth / 2, 35, { align: 'center' });
+  doc.text('Advanced Archaeological Rock Art Report v3.5.0', pageWidth / 2, 35, { align: 'center' });
 
   doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
   doc.setLineWidth(0.5);
@@ -87,7 +87,7 @@ export async function generateReport(
   doc.text('Dr. Emilio A. Villafañez · LATDAA · Fund. Félix de Azara · Universidad Nacional de Catamarca (UNCA), Argentina', pageWidth / 2, footerY, { align: 'center' });
   
   doc.setFont(serifFont, 'bold');
-  doc.text('OpuntiaColor v3.4.0 • 2024', pageWidth / 2, footerY + 5, { align: 'center' });
+  doc.text('OpuntiaColor v3.5.0 • 2026', pageWidth / 2, footerY + 5, { align: 'center' });
 
   doc.save(`Opuntia_Report_${Date.now()}.pdf`);
 }

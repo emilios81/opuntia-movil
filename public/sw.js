@@ -2,7 +2,7 @@
 // El sufijo -r2 fuerza el barrido de la caché anterior. Subilo cuando cambie
 // algo que no lleve hash en el nombre y quieras que llegue de una, sin esperar
 // a la revalidación.
-const CACHE_NAME = 'opuntiacolor-v3.4.0-cache-r2';
+const CACHE_NAME = 'opuntiacolor-v3.5.0-cache-r1';
 
 // Raíz de la app: se deduce de la ubicación de este mismo archivo, así el
 // service worker funciona igual en la raíz del dominio que en /<repo>/ de
@@ -15,6 +15,8 @@ const INITIAL_CACHING = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
+  './icon-maskable-512.png',
+  './apple-touch-icon.png',
   './opuntialogo.png'
 ].map((p) => new URL(p, self.location).href);
 

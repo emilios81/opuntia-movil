@@ -1,5 +1,5 @@
 {
-  "name": "OpuntiaColor v3.4.0",
+  "name": "OpuntiaColor v3.5.0",
   "short_name": "OpuntiaColor",
   "description": "Realce de arte rupestre en el campo: doce filtros de decorrelación, selección de zona y reportes PDF con EXIF y GPS. Todo el procesamiento ocurre en el dispositivo y funciona sin conexión.",
   "start_url": "./",
@@ -21,7 +21,7 @@
       "purpose": "any"
     },
     {
-      "src": "icon-512.png",
+      "src": "icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

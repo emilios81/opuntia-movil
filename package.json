@@ -1,6 +1,6 @@
 {
   "name": "opuntiacolor-movil",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "private": true,
   "description": "PWA de campo para realce de arte rupestre: doce filtros de decorrelación que corren enteros en el navegador, sin conexión.",
   "license": "GPL-3.0-or-later",
@@ -9,7 +9,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verificar": "node tests/comparar-con-escritorio.js"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.6",
