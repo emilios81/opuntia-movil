@@ -180,8 +180,8 @@ a la última versión:
 > [10.5281/zenodo.21845133](https://doi.org/10.5281/zenodo.21845133)
 
 El DOI de la versión 3.4.0 en particular es
-[10.5281/zenodo.21845134](https://doi.org/10.5281/zenodo.21845134); el de v3.5.0
-lo asigna Zenodo al publicar la versión. Los datos
+[10.5281/zenodo.21845134](https://doi.org/10.5281/zenodo.21845134) y el de v3.5.0
+es [10.5281/zenodo.22145677](https://doi.org/10.5281/zenodo.22145677). Los datos
 completos de cita están en [CITATION.cff](CITATION.cff), y GitHub los ofrece ya
 formateados en el botón *Cite this repository*.
 

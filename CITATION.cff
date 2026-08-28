@@ -36,7 +36,9 @@ identifiers:
   - type: doi
     value: "10.5281/zenodo.21845134"
     description: "DOI de la versión 3.4.0"
-# Al publicar la 3.5.0 en Zenodo, agregar acá el DOI de versión que asigne.
+  - type: doi
+    value: "10.5281/zenodo.22145677"
+    description: "DOI de la versión 3.5.0"
 keywords:
   - arte rupestre
   - rock art
