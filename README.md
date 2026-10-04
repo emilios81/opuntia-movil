@@ -1,4 +1,4 @@
-# OpuntiaColor v3.7.0 — versión móvil
+# OpuntiaColor v3.6.2 — versión móvil
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21845133.svg)](https://doi.org/10.5281/zenodo.21845133)
 [![Licencia: GPL v3+](https://img.shields.io/badge/licencia-GPL--3.0--or--later-blue.svg)](LICENSE)
@@ -79,8 +79,49 @@ Aun sin instalarla, la app funciona abriéndola en el navegador.
   portapapeles. Si la foto no las trae, lo dice: estando todavía en el sitio se
   puede repetir la toma.
 - **Reportes PDF** con esos mismos metadatos y las dos imágenes.
+- **Español e inglés** — la interfaz completa en los dos idiomas, con un botón
+  en la cabecera.
 
-## v3.7.0 — Las fotos a resolución completa
+## v3.6.2 — Interfaz en inglés y logo original
+
+**No cambia ningún resultado.** El motor y el tamaño de trabajo no se tocaron:
+`npm run verificar` sigue dando las 142 comparaciones idénticas.
+
+- **Interfaz en español e inglés.** El botón **EN / ES** de la cabecera cambia
+  el idioma. La primera vez se toma el del navegador y después se recuerda. Usa
+  la misma convención y los mismos nombres de filtros que la versión de
+  escritorio, y también la misma preferencia guardada: las dos apps viven en el
+  mismo dominio, así que elegir inglés en una lo elige en la otra. El nombre de
+  los archivos descargados no cambia con el idioma, porque lleva el id interno
+  del filtro. El reporte PDF sigue en inglés, como antes.
+- **El logo original en la cabecera**, el mismo del ícono de la app instalada.
+  Hasta ahora la cabecera llevaba otro dibujo, hecho a mano.
+- **Cabecera reordenada para el celular.** El nombre y la versión van uno debajo
+  del otro, y el botón del reporte dice *PDF*. Con el botón de idioma no entraban
+  en una pantalla angosta; ya antes el de *Reporte* quedaba cortado contra el
+  borde.
+- **En vivo, a pantalla completa:** la intensidad pasa adentro de **Ajustes**,
+  junto con contraste y saturación, y la pantalla queda limpia hasta que se la
+  llama. Los deslizadores se pintan para fondo oscuro, con la parte recorrida en
+  blanco: con los colores de antes esa parte se perdía contra el negro y parecían
+  avanzar al revés.
+- **Modo de campo legible.** Lo seleccionado quedaba blanco sobre blanco: el
+  botón EN VIVO, la versión, el filtro elegido y las opciones activas. Además, el
+  fondo de la página seguía beige debajo de los textos blancos. Ahora todo se lee.
+  Los botones de la cabecera dejan de ser blancos sobre beige.
+
+### Numeración
+
+Desde esta versión, el número del medio acompaña al de la versión de escritorio
+con la que la móvil está alineada (3.6.x ↔ escritorio 3.6.0), y cada tanda de
+cambios sube el último. Por eso la versión anterior, que estuvo publicada unas
+horas como 3.7.0, pasó a llamarse 3.6.1. Si una tanda cambia resultados, se avisa
+en su sección, en negrita, como en v3.6.1.
+
+## v3.6.1 — Las fotos a resolución completa
+
+*Estuvo publicada unas horas como 3.7.0 y se renumeró: ver la numeración en
+v3.6.2.*
 
 **Cambia los resultados con los valores por defecto.** Hasta v3.6.0 toda foto se
 achicaba a 2000 px de lado antes de procesarla. Ahora se procesa a su resolución
@@ -314,13 +355,15 @@ El sitio vive en una subcarpeta (`/opuntia-movil/`), definida por `basePath` en
 ```
 src/lib/image-processing.ts   motor de los doce filtros (el de referencia)
 src/lib/resolucion.ts         tamaño de trabajo de las fotos (el cálculo del escritorio)
+src/lib/idioma.ts             español e inglés: tr(es, en), la misma convención del escritorio
+src/lib/version.ts            la versión, en un solo lugar para todo el código
 src/lib/live-shaders.ts       los doce filtros portados a la GPU (GLSL)
 src/lib/live-stats.ts         estadísticas del video en vivo, con el mismo motor
 src/lib/live-gpu.ts           motor en vivo: cuadros, ruido, filtros y pantalla
 src/lib/exif-utils.ts         lectura de EXIF y GPS
 src/lib/pdf-report.ts         armado del reporte
 src/app/page.tsx              interfaz completa
-src/components/               visor en vivo, CompareSlider, logo, registro de la PWA
+src/components/               visor en vivo, CompareSlider, registro de la PWA
 src/components/ui/            los ocho componentes de shadcn que se usan
 public/sw.js                  service worker (el que da el modo offline)
 tests/                        las dos verificaciones contra el motor de referencia

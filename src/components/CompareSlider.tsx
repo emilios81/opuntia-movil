@@ -2,6 +2,7 @@
 "use client"
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useIdioma } from '@/lib/idioma';
 
 interface CompareSliderProps {
   originalSrc: string;
@@ -12,6 +13,7 @@ interface CompareSliderProps {
 }
 
 export function CompareSlider({ originalSrc, processedSrc, className = "", aspectRatio, filterLabel = "Enhanced" }: CompareSliderProps) {
+  const { tr } = useIdioma();
   const [sliderPos, setSliderPos] = useState(50);
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -63,7 +65,7 @@ export function CompareSlider({ originalSrc, processedSrc, className = "", aspec
       {/* Background Image (Original) */}
       <img
         src={originalSrc}
-        alt="Original Rock Art"
+        alt={tr("Arte rupestre, original", "Rock art, original")}
         className="absolute top-0 left-0 w-full h-full object-contain pointer-events-none"
       />
 
@@ -75,7 +77,7 @@ export function CompareSlider({ originalSrc, processedSrc, className = "", aspec
         >
           <img
             src={processedSrc}
-            alt="Enhanced Rock Art"
+            alt={tr("Arte rupestre, realzado", "Rock art, enhanced")}
             className="w-full h-full object-contain"
           />
         </div>
@@ -106,7 +108,7 @@ export function CompareSlider({ originalSrc, processedSrc, className = "", aspec
           <div className="absolute bottom-4 right-4 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded text-[9px] text-white font-code uppercase tracking-widest border border-white/10 z-20">
             Original
           </div>
-          <div className="absolute bottom-4 left-4 bg-accent/80 backdrop-blur-md px-2 py-0.5 rounded text-[9px] text-white font-code uppercase tracking-widest border border-white/10 z-20">
+          <div className="absolute bottom-4 left-4 bg-accent/80 backdrop-blur-md px-2 py-0.5 rounded text-[9px] text-accent-foreground font-code uppercase tracking-widest border border-white/10 z-20">
             {filterLabel}
           </div>
         </>

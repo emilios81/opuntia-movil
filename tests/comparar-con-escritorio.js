@@ -199,7 +199,7 @@ for (const [filtro, fnMovil, fnEscritorio] of PARES) {
 }
 
 // ------------------------------------------------- tamaño de trabajo
-// Desde v3.7.0 la móvil procesa las fotos a su resolución real, como el
+// Desde v3.6.1 la móvil procesa las fotos a su resolución real, como el
 // escritorio. Que los filtros coincidan no alcanza si cada app achica la foto a
 // un tamaño distinto: la escala cambia Micro-relieve, Relieve y CLAHE. Se
 // compara contra `computeSize` del escritorio, que vive dentro del componente.

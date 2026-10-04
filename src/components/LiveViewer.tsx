@@ -14,6 +14,7 @@ import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef,
 import { LiveEngine, type Denoise, type LiveView } from '@/lib/live-gpu';
 import { applyPostProcessing } from '@/lib/image-processing';
 import { cn } from '@/lib/utils';
+import { useIdioma } from '@/lib/idioma';
 
 type FilterFn = (img: ImageData, I: number, mask: Uint8Array | null, store: any) => ImageData;
 
@@ -59,6 +60,11 @@ const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 export const LiveViewer = forwardRef<LiveViewerHandle, Props>(function LiveViewer(props, ref) {
   const { stream, compare, filterLabel, immersive, children } = props;
+  // Los avisos de falla salen de callbacks armados al montar: leen el idioma
+  // vigente por ref, no el que había al crearlos.
+  const { tr } = useIdioma();
+  const trRef = useRef(tr);
+  useEffect(() => { trRef.current = tr; });
   const boxRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const glRef = useRef<HTMLCanvasElement>(null);
@@ -92,7 +98,9 @@ export const LiveViewer = forwardRef<LiveViewerHandle, Props>(function LiveViewe
         if (engineRef.current === eng) engineRef.current = null;
         eng.dispose();
         setEngineKind('cpu');
-        propsRef.current.onEngineError('El sistema le quitó la GPU a la página (suele pasar por memoria o al ir a segundo plano). Mientras tanto sigue en la CPU; si con 4K se repite, probá Full HD.');
+        propsRef.current.onEngineError(trRef.current(
+          'El sistema le quitó la GPU a la página (suele pasar por memoria o al ir a segundo plano). Mientras tanto sigue en la CPU; si con 4K se repite, probá Full HD.',
+          'The system took the GPU away from the page (usually because of memory, or when going to the background). Meanwhile it keeps running on the CPU; if it happens again in 4K, try Full HD.'));
       };
       engineRef.current = eng;
       setEngineKind('gpu');
@@ -196,7 +204,9 @@ export const LiveViewer = forwardRef<LiveViewerHandle, Props>(function LiveViewe
         eng.dispose();
         engineRef.current = null;
         setEngineKind('cpu');
-        p.onEngineError('La GPU de este equipo falló con el filtro elegido. Sigue en la CPU, a menor resolución.');
+        p.onEngineError(trRef.current(
+          'La GPU de este equipo falló con el filtro elegido. Sigue en la CPU, a menor resolución.',
+          'This device’s GPU failed with the chosen filter. It continues on the CPU, at a lower resolution.'));
       }
       return;
     }
@@ -499,9 +509,9 @@ export const LiveViewer = forwardRef<LiveViewerHandle, Props>(function LiveViewe
           onClick={volverAEntera}
           className="absolute left-1/2 -translate-x-1/2 z-40 bg-black/60 text-white text-[10px] font-code font-bold px-2.5 py-1 rounded-full border border-white/20 shadow-lg whitespace-nowrap"
           style={{ top: immersive ? 'calc(max(env(safe-area-inset-top), 12px) + 4px)' : '12px' }}
-          title="Volver a la imagen entera"
+          title={tr("Volver a la imagen entera", "Back to the whole image")}
         >
-          {zoom.toFixed(1)}&times; &middot; ver entera
+          {zoom.toFixed(1)}&times; &middot; {tr("ver entera", "see all")}
         </button>
       )}
 

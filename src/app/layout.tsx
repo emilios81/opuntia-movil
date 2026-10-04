@@ -4,6 +4,7 @@ import { Alegreya, Source_Code_Pro } from 'next/font/google';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { PWARegistration } from '@/components/PWARegistration';
+import { VERSION } from '@/lib/version';
 
 // El sitio se publica bajo /<repo>/ en GitHub Pages: los recursos estáticos
 // que no pasan por el router de Next necesitan el prefijo a mano.
@@ -16,7 +17,7 @@ const alegreya = Alegreya({ subsets: ['latin'], variable: '--font-alegreya', dis
 const sourceCodePro = Source_Code_Pro({ subsets: ['latin'], variable: '--font-code', display: 'swap' });
 
 export const metadata: Metadata = {
-  title: 'OpuntiaColor v3.7.0',
+  title: `OpuntiaColor v${VERSION}`,
   description: 'Realce de arte rupestre en el campo: doce filtros de decorrelación, selección de zona y reportes PDF con EXIF y GPS. Todo el procesamiento ocurre en el dispositivo y funciona sin conexión.',
   manifest: `${base}/manifest.json`,
   icons: {
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'OpuntiaColor v3.7.0',
+    title: `OpuntiaColor v${VERSION}`,
   },
 };
 
