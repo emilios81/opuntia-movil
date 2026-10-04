@@ -7,13 +7,14 @@ abstract: >-
   motor que la versión de escritorio —decorrelation stretching en RGB y en
   CIE-LAB, realce selectivo de pigmentos, ecualización adaptativa de histograma
   (CLAHE) y detección de micro-relieve para grabados— con salida idéntica píxel
-  a píxel. Agrega decorrelación en tiempo real sobre la cámara, calculada en la
+  a píxel, procesando las fotografías a su resolución real (hasta 4096 px de
+  lado). Agrega decorrelación en tiempo real sobre la cámara, calculada en la
   GPU (WebGL2) a la resolución que entregue la cámara, hasta 4K, con reducción
   de ruido temporal, zoom y comparación con el original; selección de zona con
   estadísticas calculadas sobre la región marcada, y lectura de EXIF y GPS en
-  pantalla. El procesamiento es íntegramente local en el navegador: las
-  imágenes no se transmiten a ningún servidor y la aplicación funciona sin
-  conexión una vez instalada.
+  pantalla, con la interfaz en español y en inglés. El procesamiento es
+  íntegramente local en el navegador: las imágenes no se transmiten a ningún
+  servidor y la aplicación funciona sin conexión una vez instalada.
 type: software
 authors:
   - given-names: "Emilio Alejandro"
