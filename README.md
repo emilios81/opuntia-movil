@@ -1,4 +1,4 @@
-# OpuntiaColor v3.5.0 — versión móvil
+# OpuntiaColor v3.6.0 — versión móvil
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21845133.svg)](https://doi.org/10.5281/zenodo.21845133)
 [![Licencia: GPL v3+](https://img.shields.io/badge/licencia-GPL--3.0--or--later-blue.svg)](LICENSE)
@@ -39,21 +39,28 @@ de direcciones, pero en la computadora conviene usar la
 [versión de escritorio](https://emilios81.github.io/opuntiacolor/), que es más
 completa.
 
-La primera vez que se abre el Modo Live el equipo pide permiso para la cámara;
-hace falta solo para ese modo. Si no aparece la opción de instalar, verificar que
+La primera vez que se abre la cámara **En vivo** el equipo pide permiso para
+usarla; hace falta solo para ese modo. Si no aparece la opción de instalar, verificar que
 la dirección empiece con `https://`: la cámara y la instalación requieren HTTPS.
 Aun sin instalarla, la app funciona abriéndola en el navegador.
 
 ## Características
 
-- **Doce filtros alineados con la referencia v3.5.0** — Rojo, Blanco, Negro,
+- **Doce filtros alineados con la referencia v3.6.0** — Rojo, Blanco, Negro,
   Bicromo, CRGB, DS-LAB, LDS, Micro-relieve, Relieve, YBK, CLAHE y Mapa de
   pigmentos. La salida coincide píxel a píxel con la versión de escritorio, y hay
   una prueba que lo comprueba: `npm run verificar`.
-- **Modo Live** — decorrelación en tiempo real sobre la cámara, para explorar
-  un panel antes de fotografiarlo.
-- **Modo Live con resolución elegible** — 480 px o 720 px por cuadro, según lo
-  que aguante el equipo, sin ampliar nunca por encima de lo que da la cámara.
+- **En vivo** — los doce filtros sobre la cámara, para recorrer un panel antes
+  de fotografiarlo. Se calculan en la GPU a la resolución que entregue la
+  cámara: **HD, Full HD o 4K**.
+- **Reducción de ruido, zoom y comparación en vivo** — promedio de cuadros con
+  detección de movimiento, zoom con dos dedos hasta ver el píxel, línea
+  divisoria contra el original y pantalla completa.
+- **Fijar colores** — congela las estadísticas de la decorrelación para que un
+  pigmento conserve su color al mover la cámara.
+- **Capturar** — el cuadro en vivo pasa a la vista de foto y se procesa con el
+  motor de referencia, con todo lo demás: zona, acumulación, descarga y
+  reporte.
 - **Selección de zona** — rectángulo, círculo o mano alzada sobre la imagen. El
   filtro se aplica solo ahí y, en los filtros de decorrelación (CRGB, DS-LAB,
   LDS, YBK), las estadísticas se calculan con los datos de esa zona: mejor
@@ -68,6 +75,74 @@ Aun sin instalarla, la app funciona abriéndola en el navegador.
   portapapeles. Si la foto no las trae, lo dice: estando todavía en el sitio se
   puede repetir la toma.
 - **Reportes PDF** con esos mismos metadatos y las dos imágenes.
+
+## v3.6.0 — En vivo: la cámara a resolución completa, en la GPU
+
+**No cambia ningún resultado de las fotos.** El motor de referencia
+(`src/lib/image-processing.ts`) no se tocó, y `npm run verificar` sigue dando las
+100 comparaciones idénticas byte a byte con el escritorio.
+
+Lo que cambia es el modo en vivo, que además deja de llamarse *Live*.
+
+### Por qué las dos calidades de antes se veían iguales
+
+Hasta v3.5.0 cada cuadro pasaba por el mismo motor que las fotos: JavaScript en
+el procesador, un píxel detrás de otro. Para que el video no se arrastrara había
+que achicarlo a 480 o 720 px de ancho, y en un visor que ocupa media pantalla de
+celular las dos opciones quedaban prácticamente del tamaño de la pantalla: no
+había diferencia que ver. Además la decorrelación amplifica el granulado de color
+del sensor, y en video ese ruido estaba siempre a la vista.
+
+### Qué hay ahora
+
+- **Los doce filtros corren en la GPU** (WebGL2), que procesa miles de píxeles a
+  la vez. El video se procesa a la resolución que entrega la cámara, sin achicar.
+  Se elige **HD** (1280 × 720), **Full HD** (1920 × 1080) o **4K**
+  (3840 × 2160); si la cámara no llega a lo pedido, se trabaja con lo máximo que
+  dé y la pantalla lo dice. La elección se recuerda.
+- **Pantalla completa**, con los controles sobre la imagen: tira de filtros,
+  intensidad, pausa, captura y comparación.
+- **Zoom con dos dedos** (o rueda del mouse), desplazamiento con un dedo y doble
+  toque para acercar o volver. Es donde el 4K se nota: a pantalla entera un
+  celular no muestra más de unos 1.200 px de ancho, y el resto del detalle
+  aparece al acercarse.
+- **Reducción de ruido temporal** (No / Media / Alta): promedia los últimos
+  cuadros donde la imagen está quieta y toma el cuadro nuevo entero donde hubo
+  movimiento, para no dejar estelas. Con el equipo firme, Media baja el ruido a
+  menos de la mitad y Alta a la cuarta parte (medido: de 5,0 a 2,1 y a 1,3
+  niveles).
+- **Comparar con el original**: línea divisoria arrastrable, como en las fotos.
+- **Fijar colores**: congela las estadísticas de la decorrelación. Sin esto,
+  cada encuadre recalcula la base y el mismo pigmento puede cambiar de color al
+  mover la cámara.
+- **Pausar** congela el cuadro: se puede acercar, comparar y probar filtros sobre
+  él.
+- **Capturar** pasa el cuadro a la vista de foto (en PNG, sin compresión con
+  pérdida) y lo procesa con el **motor de referencia**. Como un cuadro de video
+  no trae EXIF, se anotan la fecha, la resolución y la cámara; las coordenadas
+  no, y la app lo avisa.
+- **La pantalla no se apaga** mientras el modo en vivo está abierto.
+- **Linterna**, en los equipos que la ofrecen al navegador (Chrome en Android).
+
+Si el equipo no tiene WebGL2 con texturas flotantes, el modo en vivo sigue
+funcionando como antes, en la CPU, a 720 px como máximo.
+
+### Qué tan igual es el video al motor de referencia
+
+La GPU calcula en precisión simple y, en vivo, las estadísticas de la
+decorrelación salen de una muestra de unos 130.000 píxeles del cuadro, tomada a
+intervalos regulares de la grilla. `npm run verificar-gpu` mide la diferencia con
+el motor de referencia sobre imágenes sintéticas de hasta 4K, filtro por filtro:
+
+- **Con las estadísticas de todos los píxeles**, los doce filtros coinciden salvo
+  por diferencias de un nivel en una fracción mínima de los valores (como mucho
+  el 2 %, casi siempre menos del 0,1 %).
+- **Con la muestra que se usa en vivo**, la diferencia media queda por debajo de
+  un nivel en los doce filtros (la mayor, DS-LAB a intensidad 3, 0,93).
+
+Alcanza y sobra para explorar en pantalla, pero no es igualdad byte a byte. Por
+eso **el registro sale de Capturar**, que procesa el cuadro con el motor de
+referencia: el mismo resultado que daría el escritorio sobre esa imagen.
 
 ## v3.5.0 — LDS deja de virar a violeta
 
@@ -120,6 +195,7 @@ npm install
 npm run dev        # http://localhost:9002
 npm run build      # sitio estático en out/
 npm run verificar  # compara el motor contra la versión de escritorio
+npm run verificar-gpu  # compara el motor en vivo (GPU) contra el de referencia
 ```
 
 `npm run verificar` compila `src/lib/image-processing.ts` y corre sus filtros y
@@ -134,9 +210,15 @@ ser comparable. Si el proyecto de escritorio está en otra carpeta:
 node tests/comparar-con-escritorio.js "D:/ruta/OpuntiaColor/src/app.jsx"
 ```
 
+`npm run verificar-gpu` no termina solo: compila los dos motores, los sirve en
+<http://localhost:9013> y deja una página para abrir en un navegador con WebGL2,
+que corre los doce filtros en la GPU y en el motor de referencia y muestra cuánto
+se apartan. Toda modificación de `live-shaders.ts`, `live-stats.ts` o
+`live-gpu.ts` tiene que pasar por ahí.
+
 El motor de filtros está en `src/lib/image-processing.ts` y la interfaz en
 `src/app/page.tsx`. No hay servidor: todo el procesamiento ocurre en el
-navegador sobre `canvas`.
+navegador, sobre `canvas` las fotos y sobre WebGL2 el video en vivo.
 
 ## Publicación
 
@@ -149,18 +231,22 @@ El sitio vive en una subcarpeta (`/opuntia-movil/`), definida por `basePath` en
 `NEXT_PUBLIC_BASE_PATH=""`.
 
 > La cámara y la instalación como app requieren HTTPS. GitHub Pages lo provee;
-> abrir el sitio por IP de red local (http://) deja el Modo Live sin funcionar.
+> abrir el sitio por IP de red local (http://) deja la cámara en vivo sin funcionar.
 
 ## Estructura
 
 ```
-src/lib/image-processing.ts   motor de los doce filtros
+src/lib/image-processing.ts   motor de los doce filtros (el de referencia)
+src/lib/live-shaders.ts       los doce filtros portados a la GPU (GLSL)
+src/lib/live-stats.ts         estadísticas del video en vivo, con el mismo motor
+src/lib/live-gpu.ts           motor en vivo: cuadros, ruido, filtros y pantalla
 src/lib/exif-utils.ts         lectura de EXIF y GPS
 src/lib/pdf-report.ts         armado del reporte
 src/app/page.tsx              interfaz completa
-src/components/               CompareSlider, logo, registro de la PWA
+src/components/               visor en vivo, CompareSlider, logo, registro de la PWA
 src/components/ui/            los ocho componentes de shadcn que se usan
 public/sw.js                  service worker (el que da el modo offline)
+tests/                        las dos verificaciones contra el motor de referencia
 ```
 
 El proyecto nació de un andamiaje de Firebase Studio que arrastraba Firestore,

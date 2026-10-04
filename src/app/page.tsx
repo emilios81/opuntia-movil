@@ -23,7 +23,17 @@ import {
   FileText,
   Info,
   Camera,
-  Play
+  Play,
+  Pause,
+  Lock,
+  LockOpen,
+  Maximize,
+  Minimize,
+  Columns2,
+  Flashlight,
+  FlashlightOff,
+  Aperture,
+  Video
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -39,6 +49,8 @@ import {
 } from "@/components/ui/dialog";
 import { CompareSlider } from '@/components/CompareSlider';
 import { OpuntiaLogo } from '@/components/OpuntiaLogo';
+import { LiveViewer, type LiveInfo, type LiveViewerHandle } from '@/components/LiveViewer';
+import type { Denoise } from '@/lib/live-gpu';
 import * as OPC from '@/lib/image-processing';
 import { extractMetadata, type ImageMetadata } from '@/lib/exif-utils';
 import { generateReport } from '@/lib/pdf-report';
@@ -96,6 +108,97 @@ const PRESETS = [
   { label: "Extremo", value: 4.5 },
 ];
 
+// Calidades del modo en vivo: lo que se le pide a la cámara. Con el motor de
+// la GPU se procesa a la resolución que la cámara entregue de verdad, sin
+// achicar; "ideal" es una sugerencia, y si el equipo no llega a 4K da lo más
+// cercano que tenga (se muestra en pantalla).
+type LiveTier = 'hd' | 'fhd' | '4k';
+const LIVE_TIERS: { id: LiveTier; label: string; detalle: string; w: number; h: number }[] = [
+  { id: 'hd', label: 'HD', detalle: '1280 × 720', w: 1280, h: 720 },
+  { id: 'fhd', label: 'Full HD', detalle: '1920 × 1080', w: 1920, h: 1080 },
+  { id: '4k', label: '4K', detalle: '3840 × 2160', w: 3840, h: 2160 },
+];
+
+const DENOISE_OPTIONS: { valor: Denoise; etiqueta: string }[] = [
+  { valor: 0, etiqueta: 'No' },
+  { valor: 1, etiqueta: 'Media' },
+  { valor: 2, etiqueta: 'Alta' },
+];
+
+// Respaldo sin GPU: el motor de siempre, en la CPU, no da para más de 720 px
+// por cuadro en un celular.
+const CPU_LIVE_MAX_WIDTH = 720;
+
+// Preferencias del modo en vivo que vale la pena recordar entre sesiones: son
+// decisiones sobre el equipo, no sobre la foto. Envueltas en try porque el
+// almacenamiento puede no estar disponible (navegación privada, permisos).
+function leerPreferencia(clave: string): string | null {
+  try { return window.localStorage.getItem(clave); } catch { return null; }
+}
+function guardarPreferencia(clave: string, valor: string) {
+  try { window.localStorage.setItem(clave, valor); } catch { /* sin almacenamiento */ }
+}
+
+// Fecha en el formato de EXIF ("2026:10:04 15:30:12"), para que un cuadro
+// capturado en vivo muestre su momento igual que una foto.
+function fechaExif(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}:${p(d.getMonth() + 1)}:${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+// Insignia del visor en vivo: rojo, como en cualquier transmisión; ámbar en
+// pausa. Colores fijos y no los del tema: en el modo de campo el acento es
+// blanco y la insignia quedaba blanco sobre blanco.
+function EstadoEnVivo({ pausado }: { pausado: boolean }) {
+  return (
+    <div className={cn(
+      "text-white text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-lg",
+      pausado ? "bg-amber-600" : "bg-red-600"
+    )}>
+      {pausado
+        ? <><Pause className="w-3 h-3" /> PAUSADO</>
+        : <><span className="w-2 h-2 bg-white rounded-full animate-pulse" /> EN VIVO</>}
+    </div>
+  );
+}
+
+// Botón chico sobre el visor (comparar, pantalla completa).
+function BotonVisor({ activo, onClick, titulo, children }: {
+  activo?: boolean; onClick: () => void; titulo: string; children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={titulo}
+      aria-label={titulo}
+      aria-pressed={activo}
+      className={cn(
+        "w-9 h-9 rounded-full flex items-center justify-center shadow-lg border transition-colors",
+        activo ? "bg-white text-black border-white" : "bg-black/60 text-white border-white/25"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+// Botón con rótulo de la barra inferior a pantalla completa.
+function BotonRedondo({ activo, onClick, etiqueta, deshabilitado, children }: {
+  activo?: boolean; onClick: () => void; etiqueta: string; deshabilitado?: boolean; children: React.ReactNode;
+}) {
+  return (
+    <button onClick={onClick} disabled={deshabilitado} aria-pressed={activo} className="flex flex-col items-center gap-1 w-14 disabled:opacity-50">
+      <span className={cn(
+        "w-11 h-11 rounded-full flex items-center justify-center border transition-colors",
+        activo ? "bg-white text-black border-white" : "bg-black/50 text-white border-white/25"
+      )}>
+        {children}
+      </span>
+      <span className="text-[9px] font-bold text-white/85 leading-none text-center">{etiqueta}</span>
+    </button>
+  );
+}
+
 export default function OpuntiaColor() {
   // Sin Firebase: la app no guarda nada en la nube ni necesita identificar a
   // nadie. El inicio de sesión anónimo que traía el andamiaje era la única
@@ -117,54 +220,105 @@ export default function OpuntiaColor() {
   const [metadata, setMetadata] = useState<ImageMetadata | null>(null);
   const [isFieldMode, setIsFieldMode] = useState(false);
 
-  // Live Mode State
+  // Modo en vivo
   const [isLiveMode, setIsLiveMode] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const liveCanvasRef = useRef<HTMLCanvasElement>(null);
-  const liveRequestRef = useRef<number | null>(null);
-  // El stream vive en un ref propio: hay que poder cortarlo aunque el <video>
+  // El stream vive también en un ref: hay que poder cortarlo aunque el visor
   // ya esté desmontado, si no la cámara queda tomada.
   const liveStreamRef = useRef<MediaStream | null>(null);
-  // Puntero siempre fresco al procesador de cuadro (ver más abajo).
-  const liveFrameRef = useRef<() => void>(() => {});
-  // Ancho al que se procesa cada cuadro en vivo. El costo crece con el
-  // cuadrado: 720 son 2,2 veces más píxeles que 480, así que en equipos
-  // modestos conviene la opción baja.
-  const [liveWidth, setLiveWidth] = useState(480);
-  // Resolución efectiva de trabajo (el alto sale de la proporción de la
-  // cámara). Se muestra en pantalla para poder consignarla al reportar.
-  const [liveSize, setLiveSize] = useState({ w: 0, h: 0 });
-  // Lo que entrega realmente la cámara. A getUserMedia se le piden 1280x720
-  // como "ideal", que es una sugerencia: el equipo puede devolver menos.
-  const [liveCapture, setLiveCapture] = useState({ w: 0, h: 0 });
+  const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
+  const liveViewerRef = useRef<LiveViewerHandle>(null);
+  const [liveTier, setLiveTier] = useState<LiveTier>('4k');
+  const [liveDenoise, setLiveDenoise] = useState<Denoise>(1);
+  const [liveLock, setLiveLock] = useState(false);
+  const [livePaused, setLivePaused] = useState(false);
+  const [liveCompare, setLiveCompare] = useState(false);
+  const [liveImmersive, setLiveImmersive] = useState(false);
+  // Lo que informa el visor una vez por segundo: motor, resolución de trabajo,
+  // lo que entrega la cámara y cuadros por segundo. Se muestra en pantalla
+  // para poder consignarlo al reportar.
+  const [liveInfo, setLiveInfo] = useState<LiveInfo>({ engine: null, width: 0, height: 0, camW: 0, camH: 0, fps: 0 });
+  const [torch, setTorch] = useState({ disponible: false, encendida: false });
+  const [isCapturing, setIsCapturing] = useState(false);
+  // La imagen cargada salió de la cámara en vivo: es un PNG sin EXIF.
+  const [origenEnVivo, setOrigenEnVivo] = useState(false);
+  // Filtro con el que se abre un cuadro recién capturado.
+  const pendingFilterRef = useRef<string | null>(null);
 
   // Selection state
   const [selectionTool, setSelectionTool] = useState<SelectionType>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  
+
   // Stacking pipeline
   const [frozenStore, setFrozenStore] = useState<any>({});
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Preferencias guardadas: se leen después de montar, porque al compilar el
+  // sitio estático no existe localStorage.
+  useEffect(() => {
+    const c = leerPreferencia('opc_envivo_calidad');
+    if (c === 'hd' || c === 'fhd' || c === '4k') setLiveTier(c);
+    const r = leerPreferencia('opc_envivo_ruido');
+    if (r === '0' || r === '1' || r === '2') setLiveDenoise(Number(r) as Denoise);
+  }, []);
+
   const stopLiveMode = useCallback(() => {
-    if (liveRequestRef.current) {
-      cancelAnimationFrame(liveRequestRef.current);
-      liveRequestRef.current = null;
-    }
-
-    if (liveStreamRef.current) {
-      liveStreamRef.current.getTracks().forEach(track => track.stop());
-      liveStreamRef.current = null;
-    }
-    if (videoRef.current) videoRef.current.srcObject = null;
-
+    liveStreamRef.current?.getTracks().forEach(track => track.stop());
+    liveStreamRef.current = null;
+    if (typeof document !== 'undefined' && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    setLiveStream(null);
     setIsLiveMode(false);
+    setLivePaused(false);
+    setLiveImmersive(false);
+    setTorch({ disponible: false, encendida: false });
+    setLiveInfo({ engine: null, width: 0, height: 0, camW: 0, camH: 0, fps: 0 });
     setImageSrc(null);
   }, []);
+
+  const abrirCamara = async (tier: LiveTier) => {
+    const t = LIVE_TIERS.find(x => x.id === tier) ?? LIVE_TIERS[2];
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: t.w },
+        height: { ideal: t.h },
+        frameRate: { ideal: 30 },
+      },
+      audio: false,
+    });
+    liveStreamRef.current = stream;
+    setLiveStream(stream);
+    // Linterna: solo si la cámara la ofrece (Chrome en Android, sobre todo).
+    const track = stream.getVideoTracks()[0];
+    // Cortarla nosotros (stop) no dispara 'ended': si llega, la cortó otra app
+    // o el sistema al pasar a segundo plano, y el video quedaría congelado.
+    track?.addEventListener('ended', () => {
+      if (liveStreamRef.current !== stream) return;
+      toast({ title: "Se cortó la cámara", description: "Otra aplicación la tomó o el sistema la suspendió. Tocá En vivo para retomar." });
+      stopLiveMode();
+    });
+    const caps = (track?.getCapabilities?.() ?? {}) as MediaTrackCapabilities & { torch?: boolean };
+    setTorch({ disponible: !!caps.torch, encendida: false });
+  };
+
+  const errorDeCamara = (err: unknown) => {
+    console.error("Error al abrir la cámara:", err);
+    const name = (err as DOMException)?.name;
+    toast({
+      title: "Error de cámara",
+      description: name === "NotAllowedError"
+        ? "Permiso denegado. Habilitá la cámara para este sitio."
+        : name === "NotFoundError"
+        ? "No se encontró ninguna cámara."
+        : name === "NotReadableError"
+        ? "La cámara está ocupada por otra aplicación."
+        : "No se pudo abrir la cámara.",
+      variant: "destructive"
+    });
+  };
 
   const startLiveMode = async () => {
     if (isLiveMode) return;
@@ -175,113 +329,97 @@ export default function OpuntiaColor() {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: false
-      });
-
-      // El <video> recién se monta cuando isLiveMode pasa a true, así que acá
-      // videoRef.current TODAVÍA es null: guardamos el stream y lo conecta el
-      // efecto de abajo. Conectarlo acá dejaba la cámara tomada y sin imagen.
-      liveStreamRef.current = stream;
+      await abrirCamara(liveTier);
       setProcessedSrc(null);
       setImageSrc("LIVE_STREAM");
       setActiveFilterId(prev => prev ?? "crgb");
+      setLivePaused(false);
       setIsLiveMode(true);
     } catch (err) {
-      console.error("Error al iniciar modo Live:", err);
-      const name = (err as DOMException)?.name;
-      toast({
-        title: "Error de cámara",
-        description: name === "NotAllowedError"
-          ? "Permiso denegado. Habilitá la cámara para este sitio."
-          : name === "NotFoundError"
-          ? "No se encontró ninguna cámara."
-          : "No se pudo abrir la cámara.",
-        variant: "destructive"
-      });
+      errorDeCamara(err);
     }
   };
 
-  // Conecta el stream una vez que el elemento <video> existe en el DOM.
-  useEffect(() => {
+  // Cambiar de calidad es pedirle otra resolución a la cámara: se corta el
+  // stream y se abre uno nuevo (el permiso ya está dado, no vuelve a
+  // preguntar). Primero se corta, porque varios celulares no abren la misma
+  // cámara dos veces a la vez.
+  const cambiarCalidad = async (tier: LiveTier) => {
+    if (tier === liveTier && isLiveMode) return;
+    setLiveTier(tier);
+    guardarPreferencia('opc_envivo_calidad', tier);
     if (!isLiveMode) return;
-    const video = videoRef.current;
-    const stream = liveStreamRef.current;
-    if (!video || !stream) return;
-
-    video.srcObject = stream;
-    // play() explícito: en Android autoPlay solo no siempre alcanza.
-    video.play().catch(err => {
-      console.error("No se pudo reproducir el video:", err);
-      toast({ title: "Error de cámara", description: "El navegador bloqueó la reproducción del video.", variant: "destructive" });
-    });
-  }, [isLiveMode]);
-
-  const processLiveFrame = useCallback(() => {
-    const video = videoRef.current;
-    const canvas = liveCanvasRef.current;
-
-    if (!isLiveMode || !video || !canvas) {
-      liveRequestRef.current = null;
-      return;
+    liveStreamRef.current?.getTracks().forEach(track => track.stop());
+    liveStreamRef.current = null;
+    setLiveStream(null);
+    setLivePaused(false);
+    try {
+      await abrirCamara(tier);
+    } catch (err) {
+      errorDeCamara(err);
+      stopLiveMode();
     }
+  };
 
-    // Se reagenda SIEMPRE antes de procesar: si el bucle se cortara mientras el
-    // video todavía no está listo, no vuelve a arrancar solo.
-    liveRequestRef.current = requestAnimationFrame(() => liveFrameRef.current());
+  const cambiarRuido = (d: Denoise) => {
+    setLiveDenoise(d);
+    guardarPreferencia('opc_envivo_ruido', String(d));
+  };
 
-    if (video.readyState < 2 || video.videoWidth === 0) return;
-
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return;
-
-    if (liveCapture.w !== video.videoWidth || liveCapture.h !== video.videoHeight) {
-      setLiveCapture({ w: video.videoWidth, h: video.videoHeight });
+  const alternarLinterna = async () => {
+    const track = liveStreamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    const encendida = !torch.encendida;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: encendida } as MediaTrackConstraintSet] });
+      setTorch(t => ({ ...t, encendida }));
+    } catch {
+      toast({ title: "No se pudo usar la linterna", variant: "destructive" });
     }
+  };
 
-    // Resolución de trabajo elegida por el usuario, pero nunca por encima de
-    // lo que la cámara entrega: ampliar no inventa detalle, solo cuesta el
-    // doble de cálculo por cuadro. El alto sale de la proporción real.
-    const targetWidth = Math.min(liveWidth, video.videoWidth);
-    const targetHeight = Math.round((video.videoHeight / video.videoWidth) * targetWidth);
+  // Pantalla completa. En Android se le pide además al navegador que oculte
+  // sus barras; el iPhone no lo permite para nada que no sea un video, así que
+  // ahí el visor se expande dentro de la página (instalada como app, igual
+  // ocupa la pantalla entera).
+  const entrarPantallaCompleta = () => {
+    setLiveImmersive(true);
+    const el = containerRef.current;
+    if (el?.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().catch(() => {});
+  };
 
-    if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
-      // Solo al cambiar el tamaño, no en cada cuadro.
-      setLiveSize({ w: targetWidth, h: targetHeight });
-    }
+  const salirPantallaCompleta = () => {
+    setLiveImmersive(false);
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  };
 
-    ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-    const sourceData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+  // Si se sale de la pantalla completa con el gesto de volver o con Esc, el
+  // visor vuelve también a su lugar.
+  useEffect(() => {
+    const alCambiar = () => { if (!document.fullscreenElement) setLiveImmersive(false); };
+    document.addEventListener('fullscreenchange', alCambiar);
+    return () => document.removeEventListener('fullscreenchange', alCambiar);
+  }, []);
 
-    const filter = FILTERS.find(f => f.id === activeFilterId);
-    if (!filter) return;
+  // A pantalla completa, la tira de filtros arranca mostrando el que está en
+  // uso: si quedaba fuera de la vista no había forma de saber cuál era.
+  const tiraRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!liveImmersive) return;
+    const activo = tiraRef.current?.querySelector('[data-activo="true"]') as HTMLElement | null;
+    activo?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  }, [liveImmersive, activeFilterId]);
 
-    // En vivo las estadísticas se recalculan en cada cuadro. Congelarlas en el
-    // primer cuadro ataría el realce a lo que la cámara veía al arrancar, y
-    // además contaminaría el pipeline de la imagen estática.
-    const result = filter.fn(sourceData, intensity, null, {});
-    ctx.putImageData(OPC.applyPostProcessing(result, contrast, saturation), 0, 0);
-  }, [isLiveMode, activeFilterId, intensity, contrast, saturation, liveWidth, liveCapture]);
-
-  // El bucle se reagenda a través de este ref, no de la función capturada al
-  // arrancar: si no, cambiar filtro o intensidad en vivo no tendría efecto.
-  useEffect(() => { liveFrameRef.current = processLiveFrame; }, [processLiveFrame]);
+  // Con el visor a pantalla completa, la página de abajo no se desplaza.
+  useEffect(() => {
+    if (!liveImmersive) return;
+    const antes = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = antes; };
+  }, [liveImmersive]);
 
   // Al salir de la pantalla se suelta la cámara sí o sí.
   useEffect(() => stopLiveMode, [stopLiveMode]);
-
-  const handleVideoPlaying = () => {
-    if (liveRequestRef.current === null) {
-      liveRequestRef.current = requestAnimationFrame(() => liveFrameRef.current());
-    }
-  };
 
   const handleClearStack = () => {
     setProcessedSrc(null);
@@ -291,12 +429,18 @@ export default function OpuntiaColor() {
     toast({ title: "Memoria de Filtros Limpia" });
   };
 
-  const handleFile = useCallback(async (file: File) => {
+  const handleFile = useCallback(async (file: File, opciones?: { filtro?: string | null; enVivo?: { fecha: Date; equipo: string } }) => {
     if (!file || !file.type.startsWith("image/")) return;
     stopLiveMode();
     setFileName(file.name);
-    const meta = await extractMetadata(file);
+    // Un cuadro capturado en vivo es un PNG sin EXIF: la fecha y la cámara se
+    // completan a mano, que el panel de metadatos y el reporte las necesitan.
+    const meta = opciones?.enVivo
+      ? { date: fechaExif(opciones.enVivo.fecha), model: opciones.enVivo.equipo || undefined }
+      : await extractMetadata(file);
     setMetadata(meta);
+    setOrigenEnVivo(!!opciones?.enVivo);
+    pendingFilterRef.current = opciones?.filtro ?? null;
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -323,6 +467,46 @@ export default function OpuntiaColor() {
     };
     reader.readAsDataURL(file);
   }, [stopLiveMode]);
+
+  // Capturar: el cuadro actual (ya limpio de ruido si la reducción está
+  // activa) pasa a la vista de foto y se procesa con el motor de referencia,
+  // el mismo del escritorio. Desde ahí se puede marcar zona, acumular,
+  // descargar y armar el reporte.
+  const capturarEnVivo = async () => {
+    if (isCapturing) return;
+    const img = liveViewerRef.current?.capture();
+    if (!img) {
+      toast({ title: "Todavía no hay imagen para capturar", variant: "destructive" });
+      return;
+    }
+    setIsCapturing(true);
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      canvas.getContext('2d')!.putImageData(img, 0, 0);
+      // PNG y no JPEG: la compresión con pérdida deja bloques y franjas de
+      // color que la decorrelación después amplifica.
+      const blob: Blob | null = await new Promise(res => canvas.toBlob(res, 'image/png'));
+      if (!blob) throw new Error('No se pudo codificar el cuadro');
+      const ahora = new Date();
+      const p2 = (n: number) => String(n).padStart(2, '0');
+      const nombre = `en-vivo_${ahora.getFullYear()}-${p2(ahora.getMonth() + 1)}-${p2(ahora.getDate())}_${p2(ahora.getHours())}-${p2(ahora.getMinutes())}-${p2(ahora.getSeconds())}.png`;
+      // Para el registro: que salió del video, a qué resolución y con qué
+      // cámara. La etiqueta de la cámara solo si es legible ("camera2 0,
+      // facing back", "Back Camera"): algunos navegadores ponen un
+      // identificador al azar.
+      const etiqueta = liveStreamRef.current?.getVideoTracks()[0]?.label || '';
+      const legible = /[\s,]/.test(etiqueta) && etiqueta.length <= 60;
+      const equipo = `Video en vivo · ${img.width}×${img.height}` + (legible ? ` · ${etiqueta}` : '');
+      await handleFile(new File([blob], nombre, { type: 'image/png' }), { filtro: activeFilterId, enVivo: { fecha: ahora, equipo } });
+    } catch (err) {
+      console.error(err);
+      toast({ title: "No se pudo capturar el cuadro", variant: "destructive" });
+    } finally {
+      setIsCapturing(false);
+    }
+  };
 
   const runFilter = useCallback(async (filterId: string, int: number) => {
     if (!image || isLiveMode) return;
@@ -425,6 +609,15 @@ export default function OpuntiaColor() {
   // activeFilterId: elegir un filtro ya dispara runFilter desde el botón.
   const runFilterRef = useRef(runFilter);
   useEffect(() => { runFilterRef.current = runFilter; });
+
+  // Un cuadro capturado en vivo se abre ya procesado con el filtro que se
+  // estaba usando, ahora con el motor de referencia.
+  useEffect(() => {
+    const f = pendingFilterRef.current;
+    if (!image || !f) return;
+    pendingFilterRef.current = null;
+    runFilterRef.current(f, intensity);
+  }, [image]);
 
   useEffect(() => {
     if (!activeFilterId || !image || isLiveMode || isStacking || isDrawing) return;
@@ -550,7 +743,7 @@ export default function OpuntiaColor() {
             {/* El logo estaba escrito y sin usar en ningún lado desde el
                 principio. Es la misma identidad que el icono de la PWA. */}
             <OpuntiaLogo className="w-7 h-7 shrink-0" />
-            OpuntiaColor <span className="bg-accent text-white text-[10px] px-1.5 py-0.5 rounded-full">v3.5.0</span>
+            OpuntiaColor <span className="bg-accent text-white text-[10px] px-1.5 py-0.5 rounded-full">v3.6.0</span>
           </h1>
         </div>
         <div className="flex gap-2">
@@ -562,11 +755,11 @@ export default function OpuntiaColor() {
             </DialogTrigger>
             <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>OPC v3.5.0 — Motor de Campo</DialogTitle>
+                <DialogTitle>OPC v3.6.0 — Motor de Campo</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 text-sm py-4">
-                <p>· <strong>Decorrelación en Vivo</strong> — Exploración espectral dinámica mediante cámara.</p>
-                <p>· <strong>Algoritmos Precisos</strong> — Alineación científica total con la referencia v3.5.0.</p>
+                <p>· <strong>En vivo</strong> — Los doce filtros sobre la cámara, calculados en la GPU a la resolución que entregue (hasta 4K), con reducción de ruido, zoom, comparación con el original y pantalla completa. Capturar pasa el cuadro al motor de referencia.</p>
+                <p>· <strong>Algoritmos Precisos</strong> — Alineación científica total con la referencia de escritorio v3.6.0: la salida de las fotos coincide byte a byte.</p>
                 <p>· <strong>Estadísticas por zona</strong> — Con una zona marcada, la decorrelación (CRGB, DS-LAB, LDS, YBK) se calcula con los datos de esa zona: mejor separación de pigmentos locales, como en DStretch.</p>
                 <p>· <strong>Modo PWA</strong> — Funcionamiento 100% offline tras la instalación.</p>
                 {/* Aviso legal de la GPL: la licencia pide que una interfaz
@@ -598,13 +791,19 @@ export default function OpuntiaColor() {
       {/* Columna en celular (no grilla): así el visor puede quedar anclado
           respecto de toda la página y no solo de su propia fila. */}
       <main className="flex-1 p-4 flex flex-col lg:grid lg:grid-cols-4 gap-4 max-w-[1600px] mx-auto w-full">
-        <div className="lg:col-span-3 space-y-4 order-1 sticky top-16 z-30 -mx-4 px-4 -mt-4 pt-4 pb-2 bg-background lg:static lg:z-auto lg:mx-0 lg:px-0 lg:mt-0 lg:pt-0 lg:pb-0 lg:bg-transparent">
+        {/* A pantalla completa el visor tiene que quedar por encima de la
+            cabecera (z-50): este contenedor anclado arma su propio contexto de
+            apilamiento, así que sube él también. */}
+        <div className={cn(
+          "lg:col-span-3 space-y-4 order-1 sticky top-16 -mx-4 px-4 -mt-4 pt-4 pb-2 bg-background lg:static lg:mx-0 lg:px-0 lg:mt-0 lg:pt-0 lg:pb-0 lg:bg-transparent",
+          liveImmersive ? "z-[60] lg:z-[60]" : "z-30 lg:z-auto"
+        )}>
           <div className="bg-card border border-border rounded-2xl p-2 flex flex-col shadow-sm relative overflow-hidden">
             {!imageSrc ? (
               <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground py-20">
                 <FileImage className="w-16 h-16 opacity-10 mb-4" />
-                <p className="text-sm font-bold uppercase tracking-widest">OpuntiaColor v3.5.0</p>
-                <p className="text-[10px] opacity-60">Sube una imagen o inicia el Modo Live</p>
+                <p className="text-sm font-bold uppercase tracking-widest">OpuntiaColor v3.6.0</p>
+                <p className="text-[10px] opacity-60">Subí una imagen o abrí la cámara en vivo</p>
               </div>
             ) : (
               <>
@@ -612,7 +811,8 @@ export default function OpuntiaColor() {
                   ref={containerRef}
                   className={cn(
                     "relative mx-auto bg-black rounded-xl overflow-hidden shadow-2xl",
-                    selectionTool && !isLiveMode && "cursor-crosshair ring-2 ring-accent"
+                    selectionTool && !isLiveMode && "cursor-crosshair ring-2 ring-accent",
+                    isLiveMode && liveImmersive && "fixed inset-0 z-[70] rounded-none shadow-none"
                   )}
                   onMouseDown={handleStartDraw}
                   onTouchStart={handleStartDraw}
@@ -623,8 +823,10 @@ export default function OpuntiaColor() {
                     // acota el ANCHO al que corresponde a ese alto, para que la
                     // caja conserve exactamente la proporción de la foto: de eso
                     // depende que la zona seleccionada caiga donde uno la dibuja.
+                    // A pantalla completa la caja va fija de borde a borde y
+                    // el alto lo dan top y bottom.
                     ...(isLiveMode
-                      ? { height: 'var(--viewer-max-h)' }
+                      ? (liveImmersive ? {} : { height: 'var(--viewer-max-h)' })
                       : {
                           aspectRatio: imageSize.w / imageSize.h,
                           maxWidth: `calc(var(--viewer-max-h) * ${imageSize.h ? imageSize.w / imageSize.h : 1})`,
@@ -633,34 +835,141 @@ export default function OpuntiaColor() {
                   }}
                 >
                   {isLiveMode ? (
-                    <div className="w-full h-full flex items-center justify-center relative bg-black">
-                      {/* Video activo pero debajo del canvas */}
-                      <video 
-                        ref={videoRef} 
-                        playsInline 
-                        muted 
-                        autoPlay
-                        onPlaying={handleVideoPlaying}
-                        style={{ 
-                          position: 'absolute', 
-                          top: 0, 
-                          left: 0, 
-                          width: '100%', 
-                          height: '100%', 
-                          opacity: 0.05, 
-                          pointerEvents: 'none',
-                          zIndex: 0,
-                          objectFit: 'cover'
-                        }}
-                      />
-                      <canvas 
-                        ref={liveCanvasRef} 
-                        className="w-full h-full object-contain relative z-10" 
-                      />
-                      <div className="absolute top-4 left-4 z-20 bg-accent text-white text-[10px] font-bold px-3 py-1 rounded-full animate-pulse flex items-center gap-2 shadow-lg">
-                        <div className="w-2 h-2 bg-white rounded-full" /> MODO EXPLORACIÓN LIVE
-                      </div>
-                    </div>
+                    <LiveViewer
+                      ref={liveViewerRef}
+                      stream={liveStream}
+                      filterId={activeFilterId}
+                      filterLabel={FILTERS.find(f => f.id === activeFilterId)?.name || "Original"}
+                      filterFn={FILTERS.find(f => f.id === activeFilterId)?.fn ?? null}
+                      intensity={intensity}
+                      contrast={contrast}
+                      saturation={saturation}
+                      denoise={liveDenoise}
+                      lock={liveLock}
+                      paused={livePaused}
+                      compare={liveCompare}
+                      immersive={liveImmersive}
+                      cpuMaxWidth={CPU_LIVE_MAX_WIDTH}
+                      onInfo={setLiveInfo}
+                      onEngineError={(m) => toast({ title: "Motor en vivo", description: m, variant: "destructive" })}
+                    >
+                      {!liveImmersive ? (
+                        <>
+                          <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 pointer-events-none">
+                            <EstadoEnVivo pausado={livePaused} />
+                            {liveLock && (
+                              <div className="bg-black/60 text-white text-[9px] font-bold px-2 py-1 rounded-full flex items-center gap-1 border border-white/20">
+                                <Lock className="w-3 h-3" /> COLORES FIJOS
+                              </div>
+                            )}
+                          </div>
+                          {/* Como en una app de cámara: pausa y captura a la
+                              izquierda, vistas a la derecha. Así la barra de
+                              abajo no se encima en un celular angosto. */}
+                          <div className="absolute bottom-3 left-3 z-20 flex gap-2">
+                            <BotonVisor activo={livePaused} onClick={() => setLivePaused(p => !p)} titulo={livePaused ? "Seguir" : "Pausar"}>
+                              {livePaused ? <Play className="w-4 h-4 ml-0.5" /> : <Pause className="w-4 h-4" />}
+                            </BotonVisor>
+                            <BotonVisor onClick={capturarEnVivo} titulo="Capturar este cuadro">
+                              <Aperture className={cn("w-4 h-4", isCapturing && "animate-spin")} />
+                            </BotonVisor>
+                          </div>
+                          <div className="absolute bottom-3 right-3 z-20 flex gap-2">
+                            <BotonVisor activo={liveCompare} onClick={() => setLiveCompare(c => !c)} titulo="Comparar con el original">
+                              <Columns2 className="w-4 h-4" />
+                            </BotonVisor>
+                            <BotonVisor onClick={entrarPantallaCompleta} titulo="Pantalla completa">
+                              <Maximize className="w-4 h-4" />
+                            </BotonVisor>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* Pantalla completa: los controles van sobre la imagen. */}
+                          <div
+                            className="absolute top-0 inset-x-0 z-30 flex items-start justify-between gap-2 px-3 pb-8 bg-gradient-to-b from-black/75 to-transparent pointer-events-none"
+                            style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}
+                          >
+                            <div className="flex flex-col items-start gap-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <EstadoEnVivo pausado={livePaused} />
+                                {liveLock && (
+                                  <div className="bg-black/60 text-white text-[9px] font-bold px-2 py-1 rounded-full flex items-center gap-1 border border-white/20">
+                                    <Lock className="w-3 h-3" /> COLORES FIJOS
+                                  </div>
+                                )}
+                              </div>
+                              {liveInfo.width > 0 && (
+                                <span className="text-[9px] font-code text-white/80 bg-black/40 px-2 py-0.5 rounded">
+                                  {liveInfo.width}&times;{liveInfo.height} &middot; {Math.round(liveInfo.fps)} fps{liveInfo.engine === 'cpu' ? ' · CPU' : ''}
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              onClick={salirPantallaCompleta}
+                              className="pointer-events-auto w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center border border-white/25 shadow-lg"
+                              title="Salir de pantalla completa"
+                            >
+                              <Minimize className="w-5 h-5" />
+                            </button>
+                          </div>
+                          <div
+                            className="absolute bottom-0 inset-x-0 z-30 px-3 pt-10 space-y-3 bg-gradient-to-t from-black/85 via-black/60 to-transparent"
+                            style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}
+                          >
+                            {activeFilterId && (
+                              <div className="flex items-center gap-3">
+                                <span className="text-[9px] font-bold uppercase text-white/70 tracking-widest">Intensidad</span>
+                                <Slider value={[intensity]} onValueChange={v => setIntensity(v[0])} min={0.2} max={5.0} step={0.1} className="flex-1" />
+                                <span className="text-[11px] font-code font-bold text-white w-9 text-right">{intensity.toFixed(1)}&times;</span>
+                              </div>
+                            )}
+                            <div ref={tiraRef} className="flex gap-1.5 overflow-x-auto -mx-3 px-3 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                              {[{ id: null as string | null, name: 'Original', icon: '◻' }, ...FILTERS].map(f => (
+                                <button
+                                  key={f.id ?? 'original'}
+                                  data-activo={activeFilterId === f.id}
+                                  onClick={() => setActiveFilterId(f.id)}
+                                  className={cn(
+                                    "shrink-0 flex items-center gap-1.5 pl-2 pr-3 h-9 rounded-full border text-[11px] font-bold whitespace-nowrap transition-colors",
+                                    activeFilterId === f.id ? "bg-white text-black border-white" : "bg-black/50 text-white border-white/25"
+                                  )}
+                                >
+                                  <span className="text-sm leading-none">{f.icon}</span>{f.name}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="flex items-center justify-between px-1">
+                              <BotonRedondo activo={liveCompare} onClick={() => setLiveCompare(c => !c)} etiqueta="Comparar">
+                                <Columns2 className="w-5 h-5" />
+                              </BotonRedondo>
+                              <BotonRedondo activo={liveLock} onClick={() => setLiveLock(l => !l)} etiqueta={liveLock ? "Colores fijos" : "Fijar colores"}>
+                                {liveLock ? <Lock className="w-5 h-5" /> : <LockOpen className="w-5 h-5" />}
+                              </BotonRedondo>
+                              <button
+                                onClick={() => setLivePaused(p => !p)}
+                                className="w-16 h-16 rounded-full bg-white text-black flex items-center justify-center shadow-xl border-4 border-white/40"
+                                title={livePaused ? "Seguir" : "Pausar"}
+                              >
+                                {livePaused ? <Play className="w-7 h-7 ml-0.5" /> : <Pause className="w-7 h-7" />}
+                              </button>
+                              <BotonRedondo onClick={capturarEnVivo} etiqueta="Capturar" deshabilitado={isCapturing}>
+                                <Aperture className={cn("w-5 h-5", isCapturing && "animate-spin")} />
+                              </BotonRedondo>
+                              {torch.disponible ? (
+                                <BotonRedondo activo={torch.encendida} onClick={alternarLinterna} etiqueta="Linterna">
+                                  {torch.encendida ? <Flashlight className="w-5 h-5" /> : <FlashlightOff className="w-5 h-5" />}
+                                </BotonRedondo>
+                              ) : (
+                                <BotonRedondo onClick={stopLiveMode} etiqueta="Detener">
+                                  <X className="w-5 h-5" />
+                                </BotonRedondo>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </LiveViewer>
                   ) : (
                     <CompareSlider 
                       originalSrc={imageSrc} 
@@ -719,19 +1028,24 @@ export default function OpuntiaColor() {
                   )}
                 </div>
                 <div className="mt-2 flex items-center justify-between px-2 py-1">
-                  <div className="flex items-center gap-3 text-[10px] font-code text-muted-foreground uppercase tracking-widest">
-                    <span className="flex items-center gap-1">
+                  <div className="flex items-center gap-3 text-[10px] font-code text-muted-foreground uppercase tracking-widest min-w-0">
+                    <span className="flex items-center gap-1 whitespace-nowrap">
                       <Maximize2 className="w-3 h-3" />
                       {isLiveMode
-                        ? (liveSize.w ? `${liveSize.w} x ${liveSize.h} PX` : "—")
+                        ? (liveInfo.width ? `${liveInfo.width} x ${liveInfo.height} PX` : "—")
                         : `${imageSize.w} x ${imageSize.h} PX`}
                     </span>
-                    <span className="hidden sm:flex items-center gap-1"><Zap className="w-3 h-3 text-accent" /> Motor v3.5.0</span>
+                    {isLiveMode && liveInfo.fps > 0 && (
+                      <span className="whitespace-nowrap">{Math.round(liveInfo.fps)} FPS{liveInfo.engine === 'cpu' ? ' · CPU' : ''}</span>
+                    )}
+                    <span className="hidden sm:flex items-center gap-1"><Zap className="w-3 h-3 text-accent" /> Motor v3.6.0</span>
                     {isStacking && processedSrc && <span className="flex items-center gap-1 text-accent font-bold animate-pulse"><StackingIcon className="w-3 h-3" /> STACK ACTIVO</span>}
                   </div>
                   {(processedSrc || isLiveMode) && (
-                    <div className="flex gap-2">
-                      {isLiveMode && <Button size="sm" variant="destructive" className="h-7 text-[10px] font-bold" onClick={stopLiveMode}><X className="w-3 h-3 mr-1" /> CERRAR LIVE</Button>}
+                    <div className="flex gap-1.5 shrink-0">
+                      {isLiveMode && (
+                        <Button size="sm" variant="destructive" className="h-7 px-2.5 text-[10px] font-bold" onClick={stopLiveMode}><X className="w-3 h-3 mr-1" /> Detener</Button>
+                      )}
                       {!isLiveMode && processedSrc && (
                         <>
                           <Button size="sm" variant="ghost" className="h-7 text-[10px] text-destructive hover:bg-destructive/10" onClick={handleClearStack}><Trash2 className="w-3 h-3 mr-1" /> Limpiar</Button>
@@ -757,12 +1071,12 @@ export default function OpuntiaColor() {
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-inner"><Upload className="w-8 h-8" /></div>
               <div className="space-y-2">
                 <h3 className="text-lg font-bold">Captura e Inspección</h3>
-                <p className="text-xs text-muted-foreground">Utiliza el Modo Live para exploración dinámica o sube una imagen estática.</p>
+                <p className="text-xs text-muted-foreground">Recorré el panel con la cámara en vivo, o subí una foto para analizarla en detalle.</p>
               </div>
               <input type="file" ref={fileInputRef} className="hidden" onChange={(e) => e.target.files && handleFile(e.target.files[0])} accept="image/*" />
               <input type="file" ref={cameraInputRef} className="hidden" onChange={(e) => e.target.files && handleFile(e.target.files[0])} accept="image/*" capture="environment" />
               <div className="grid grid-cols-1 gap-3 w-full">
-                <Button onClick={startLiveMode} className="w-full h-12 bg-accent hover:bg-accent/90 text-white font-bold shadow-lg transform transition-transform active:scale-95"><Play className="w-4 h-4 mr-2" /> MODO LIVE</Button>
+                <Button onClick={startLiveMode} className="w-full h-12 bg-accent hover:bg-accent/90 text-white font-bold shadow-lg transform transition-transform active:scale-95"><Video className="w-4 h-4 mr-2" /> EN VIVO</Button>
                 <div className="grid grid-cols-2 gap-2">
                   <Button variant="outline" onClick={() => cameraInputRef.current?.click()} className="w-full h-10 shadow-sm"><Camera className="w-4 h-4 mr-2" /> Foto</Button>
                   <Button variant="outline" onClick={() => fileInputRef.current?.click()} className="w-full h-10 shadow-sm"><Upload className="w-4 h-4 mr-2" /> Archivo</Button>
@@ -773,7 +1087,7 @@ export default function OpuntiaColor() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-2">
                 <Button variant="outline" className="w-full h-10 border-accent text-accent hover:bg-accent hover:text-white font-bold shadow-sm" onClick={isLiveMode ? stopLiveMode : startLiveMode}>
-                  {isLiveMode ? <><X className="w-4 h-4 mr-2" /> Detener</> : <><Play className="w-4 h-4 mr-2" /> Live</>}
+                  {isLiveMode ? <><X className="w-4 h-4 mr-2" /> Detener</> : <><Video className="w-4 h-4 mr-2" /> En vivo</>}
                 </Button>
                 <Button variant="outline" className="w-full h-10 border-accent text-accent hover:bg-accent hover:text-white font-bold shadow-sm" onClick={handleReset}><PlusCircle className="w-4 h-4 mr-2" /> Nuevo</Button>
               </div>
@@ -781,55 +1095,138 @@ export default function OpuntiaColor() {
               {isLiveMode && (
                 <Card className="p-4 space-y-3 shadow-inner bg-muted/10 border-border">
                   <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Resolución en vivo</label>
-                    {liveSize.w > 0 && (
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Calidad en vivo</label>
+                    {liveInfo.width > 0 && (
                       <span className="text-[10px] font-code font-bold bg-accent/10 text-accent px-2 py-0.5 rounded border border-accent/20">
-                        {liveSize.w}&times;{liveSize.h}
+                        {liveInfo.width}&times;{liveInfo.height}
                       </span>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { valor: 480, etiqueta: 'Baja', detalle: '480 px · fluido' },
-                      { valor: 720, etiqueta: 'HD 720', detalle: '720 px · más detalle' },
-                    ].map(o => (
+                  <div className="grid grid-cols-3 gap-2">
+                    {LIVE_TIERS.map(t => (
                       <button
-                        key={o.valor}
-                        onClick={() => setLiveWidth(o.valor)}
+                        key={t.id}
+                        onClick={() => cambiarCalidad(t.id)}
                         className={cn(
-                          "flex flex-col items-center gap-0.5 py-2 px-2 rounded-lg border font-bold transition-all",
-                          liveWidth === o.valor
+                          "flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg border font-bold transition-all",
+                          liveTier === t.id
                             ? "bg-accent border-accent text-white shadow-sm"
                             : "bg-card border-border text-muted-foreground hover:bg-muted"
                         )}
                       >
-                        <span className="text-[11px]">{o.etiqueta}</span>
-                        <span className="text-[8px] font-normal opacity-70">{o.detalle}</span>
+                        <span className="text-[11px]">{t.label}</span>
+                        <span className="text-[8px] font-normal opacity-70">{t.detalle}</span>
                       </button>
                     ))}
                   </div>
-                  {liveCapture.w > 0 && (
-                    <div className="flex justify-between items-center text-[9px] font-code text-muted-foreground border-t border-border pt-2">
-                      <span>C&aacute;mara entrega</span>
-                      <span className="font-bold">{liveCapture.w}&times;{liveCapture.h}</span>
-                    </div>
+                  {liveInfo.camW > 0 && (
+                    <dl className="text-[9px] font-code text-muted-foreground border-t border-border pt-2 space-y-1">
+                      <div className="flex justify-between gap-3">
+                        <dt>C&aacute;mara entrega</dt>
+                        <dd className="font-bold">{liveInfo.camW}&times;{liveInfo.camH}</dd>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <dt>Procesa</dt>
+                        <dd className="font-bold">
+                          {liveInfo.engine === 'gpu' ? 'GPU · resolución completa' : 'CPU · reducida'} &middot; {Math.round(liveInfo.fps)} fps
+                        </dd>
+                      </div>
+                    </dl>
                   )}
-                  {liveCapture.w > 0 && liveCapture.w < liveWidth && (
+                  {liveInfo.camW > 0 && (() => {
+                    // Lo que se pidió contra lo que llegó: si la cámara no da
+                    // la calidad elegida, que se sepa (y que conste en notas).
+                    const pedido = LIVE_TIERS.find(t => t.id === liveTier)!;
+                    const mayor = Math.max(liveInfo.camW, liveInfo.camH);
+                    return mayor < pedido.w ? (
+                      <p className="text-[9px] text-accent leading-snug font-bold">
+                        Tu c&aacute;mara no entrega {pedido.label} por esta v&iacute;a: lo m&aacute;ximo que da es {liveInfo.camW}&times;{liveInfo.camH}, y se trabaja a eso.
+                      </p>
+                    ) : null;
+                  })()}
+                  {liveInfo.engine === 'gpu' && liveInfo.fps > 0 && liveInfo.fps < 12 && liveTier !== 'hd' && !livePaused && (
                     <p className="text-[9px] text-accent leading-snug font-bold">
-                      Tu c&aacute;mara entrega {liveCapture.w} px de ancho, as&iacute; que HD no puede agregar
-                      detalle: se trabaja a {liveCapture.w} px.
+                      El video va a {Math.round(liveInfo.fps)} cuadros por segundo. Si se entrecorta, baj&aacute; a {liveTier === '4k' ? 'Full HD' : 'HD'}: este equipo no da para m&aacute;s a esta resoluci&oacute;n.
+                    </p>
+                  )}
+                  {liveInfo.engine === 'cpu' && (
+                    <p className="text-[9px] text-accent leading-snug font-bold">
+                      Este equipo no ofrece procesamiento por GPU (WebGL2): el video se procesa en la CPU, achicado a {CPU_LIVE_MAX_WIDTH} px, y sin zoom ni reducci&oacute;n de ruido.
                     </p>
                   )}
                   <p className="text-[9px] text-muted-foreground leading-snug">
-                    HD procesa 2,2 veces más p&iacute;xeles por cuadro. Si el video se entrecorta,
-                    volv&eacute; a Baja: el Modo Live es para explorar &mdash; el detalle real sale de la foto.
+                    La imagen en vivo se calcula en la GPU con los mismos filtros. Para el registro, <strong>Capturar</strong> pasa el cuadro a la vista de foto y lo procesa con el motor de referencia.
                   </p>
+                </Card>
+              )}
+
+              {isLiveMode && (
+                <Card className="p-4 space-y-4 shadow-inner bg-muted/10 border-border">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Reducci&oacute;n de ruido</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {DENOISE_OPTIONS.map(o => (
+                        <button
+                          key={o.valor}
+                          onClick={() => cambiarRuido(o.valor)}
+                          disabled={liveInfo.engine === 'cpu'}
+                          className={cn(
+                            "py-1.5 rounded-lg border text-[10px] font-bold transition-all disabled:opacity-40",
+                            liveDenoise === o.valor
+                              ? "bg-accent border-accent text-white shadow-sm"
+                              : "bg-card border-border text-muted-foreground hover:bg-muted"
+                          )}
+                        >
+                          {o.etiqueta}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-muted-foreground leading-snug">
+                      Promedia los &uacute;ltimos cuadros donde la imagen est&aacute; quieta. La decorrelaci&oacute;n amplifica el granulado de color del sensor: con el equipo firme o apoyado, Media lo baja a menos de la mitad y Alta a la cuarta parte. Al mover la c&aacute;mara, Alta deja una estela breve en los detalles tenues.
+                    </p>
+                  </div>
+                  <div className="space-y-2 pt-3 border-t border-border">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label htmlFor="fijar-colores" className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest cursor-pointer">
+                        Fijar colores
+                      </Label>
+                      <Switch id="fijar-colores" checked={liveLock} onCheckedChange={setLiveLock} />
+                    </div>
+                    <p className="text-[9px] text-muted-foreground leading-snug">
+                      {liveLock
+                        ? "Las estadísticas de la decorrelación quedan congeladas: el mismo pigmento conserva su color aunque muevas la cámara."
+                        : "Apuntá a una zona representativa del panel y fijá: los colores dejan de cambiar con cada encuadre."}
+                    </p>
+                  </div>
+                  {torch.disponible && (
+                    <div className="flex items-center justify-between gap-3 pt-3 border-t border-border">
+                      <Label htmlFor="linterna" className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest cursor-pointer">
+                        Linterna
+                      </Label>
+                      <Switch id="linterna" checked={torch.encendida} onCheckedChange={alternarLinterna} />
+                    </div>
+                  )}
                 </Card>
               )}
 
               {/* En celular la lista se muestra entera y se recorre con el
                   desplazamiento de la página, con la cámara siempre a la vista. */}
               <Card className="bg-card shadow-lg border-border lg:overflow-y-auto lg:max-h-[400px] p-1 space-y-1 custom-scrollbar">
+                {isLiveMode && (
+                  <button
+                    onClick={() => setActiveFilterId(null)}
+                    className={cn(
+                      "w-full flex items-center gap-2 p-3 rounded-xl transition-all text-left",
+                      activeFilterId === null ? "bg-accent text-white shadow-md ring-2 ring-accent/20" : "hover:bg-muted bg-transparent text-foreground"
+                    )}
+                  >
+                    <span className="text-base bg-background/10 w-10 h-10 flex items-center justify-center rounded-xl shadow-sm">◻</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-bold truncate leading-tight uppercase tracking-tighter">Original</p>
+                      <p className={cn("text-[9px] truncate opacity-60 font-medium", activeFilterId === null ? "text-white" : "text-muted-foreground")}>La c&aacute;mara sin filtro, para encuadrar</p>
+                    </div>
+                  </button>
+                )}
                 {FILTERS.map(f => (
                   <button
                     key={f.id}
@@ -935,8 +1332,9 @@ export default function OpuntiaColor() {
                     <div className="flex items-start gap-2">
                       <MapPin className="w-4 h-4 text-muted-foreground/40 shrink-0 mt-0.5" />
                       <p className="text-[10px] text-muted-foreground leading-snug">
-                        La foto no trae coordenadas. Suele pasar con el GPS de la cámara apagado,
-                        o si el archivo pasó por una app de mensajería que borra los metadatos.
+                        {origenEnVivo
+                          ? "Cuadro capturado en vivo: el video de la cámara no lleva coordenadas. Para dejar el sitio registrado, sacá también una Foto."
+                          : "La foto no trae coordenadas. Suele pasar con el GPS de la cámara apagado, o si el archivo pasó por una app de mensajería que borra los metadatos."}
                       </p>
                     </div>
                   )}
@@ -994,7 +1392,7 @@ export default function OpuntiaColor() {
         <div className="space-y-2 text-[10px] text-muted-foreground tracking-tight font-medium max-w-2xl mx-auto">
           <p>Dr. Emilio A. Villafañez · LATDAA · Fund. Félix de Azara · Universidad Nacional de Catamarca (UNCA), Argentina</p>
           <div className="flex items-center justify-center gap-4 pt-4 border-t border-border/50">
-            <span className="opacity-60 font-code uppercase tracking-widest font-bold">OpuntiaColor v3.5.0</span>
+            <span className="opacity-60 font-code uppercase tracking-widest font-bold">OpuntiaColor v3.6.0</span>
             <span className="bg-accent/10 text-accent px-2 py-0.5 rounded-full font-bold">OFFLINE READY</span>
           </div>
         </div>

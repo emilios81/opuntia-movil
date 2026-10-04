@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OPC móvil · verificación GPU</title>
+<style>
+  :root { color-scheme: light dark; --fondo: #f2e9e1; --texto: #372a20; --tenue: #7a6a5c; --ok: #2f7d32; --aviso: #b26a00; --mal: #b3261e; --linea: #d8cbbd; }
+  @media (prefers-color-scheme: dark) { :root { --fondo: #17120e; --texto: #eee3d8; --tenue: #a8998b; --ok: #7bc47f; --aviso: #f0b45a; --mal: #ff8a80; --linea: #3a2f26; } }
+  body { margin: 0; padding: 16px; background: var(--fondo); color: var(--texto); font: 14px/1.45 system-ui, sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p { margin: 4px 0 12px; color: var(--tenue); max-width: 70ch; }
+  #estado { font-weight: 600; margin: 8px 0 12px; }
+  .tabla { overflow-x: auto; }
+  table { border-collapse: collapse; font: 12px/1.3 ui-monospace, Consolas, monospace; }
+  th, td { padding: 3px 8px; border-bottom: 1px solid var(--linea); text-align: right; white-space: nowrap; }
+  th:nth-child(-n+4), td:nth-child(-n+4) { text-align: left; }
+  tr.ok td:last-child { color: var(--ok); }
+  tr.aviso td:last-child { color: var(--aviso); font-weight: 600; }
+  tr.mal td:last-child { color: var(--mal); font-weight: 700; }
+</style>
+</head>
+<body>
+<h1>Motor en vivo (GPU) contra el motor de referencia</h1>
+<p>Cada filtro corre en los dos motores sobre las mismas imágenes. «Exactas» usa estadísticas
+de todos los píxeles, como el motor, y aísla la diferencia de precisión de la GPU. «Muestra»
+usa la muestra que se toma en vivo. Las columnas cuentan valores de canal (R, G, B) que difieren.</p>
+<div id="gpu"></div>
+<div id="estado">Preparando…</div>
+<div class="tabla"><table>
+  <thead><tr><th>imagen</th><th>filtro</th><th>I</th><th>estadísticas</th><th>% distintos</th><th>dif. media</th><th>dif. máx</th><th>% &gt; 2</th><th>% &gt; 8</th><th>CPU ms</th><th>GPU ms</th><th>juicio</th></tr></thead>
+  <tbody id="filas"></tbody>
+</table></div>
+<script type="module" src="/pagina.mjs"></script>
+</body>
+</html>
