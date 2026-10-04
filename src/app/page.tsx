@@ -33,7 +33,8 @@ import {
   Flashlight,
   FlashlightOff,
   Aperture,
-  Video
+  Video,
+  SlidersHorizontal
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -54,6 +55,7 @@ import type { Denoise } from '@/lib/live-gpu';
 import * as OPC from '@/lib/image-processing';
 import { extractMetadata, type ImageMetadata } from '@/lib/exif-utils';
 import { generateReport } from '@/lib/pdf-report';
+import { tamanoDeTrabajo, LADO_REDUCIDO, TOPE_CELULAR, TOPE_ESCRITORIO } from '@/lib/resolucion';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -111,10 +113,10 @@ const PRESETS = [
 // Calidades del modo en vivo: lo que se le pide a la cámara. Con el motor de
 // la GPU se procesa a la resolución que la cámara entregue de verdad, sin
 // achicar; "ideal" es una sugerencia, y si el equipo no llega a 4K da lo más
-// cercano que tenga (se muestra en pantalla).
-type LiveTier = 'hd' | 'fhd' | '4k';
+// cercano que tenga (se muestra en pantalla). HD (1280 × 720) salió en v3.7.0:
+// en el celular no se distinguía de Full HD y no aportaba nada para analizar.
+type LiveTier = 'fhd' | '4k';
 const LIVE_TIERS: { id: LiveTier; label: string; detalle: string; w: number; h: number }[] = [
-  { id: 'hd', label: 'HD', detalle: '1280 × 720', w: 1280, h: 720 },
   { id: 'fhd', label: 'Full HD', detalle: '1920 × 1080', w: 1920, h: 1080 },
   { id: '4k', label: '4K', detalle: '3840 × 2160', w: 3840, h: 2160 },
 ];
@@ -145,6 +147,10 @@ function fechaExif(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}:${p(d.getMonth() + 1)}:${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
+
+// Las explicaciones de los paneles. Eran de 9 px y en el celular no se leían:
+// 10,5 px las hace legibles sin agrandar los paneles más de la cuenta.
+const AYUDA = "text-[10.5px] leading-snug";
 
 // Insignia del visor en vivo: rojo, como en cualquier transmisión; ámbar en
 // pausa. Colores fijos y no los del tema: en el modo de campo el acento es
@@ -194,8 +200,68 @@ function BotonRedondo({ activo, onClick, etiqueta, deshabilitado, children }: {
       )}>
         {children}
       </span>
-      <span className="text-[9px] font-bold text-white/85 leading-none text-center">{etiqueta}</span>
+      <span className="text-[10px] font-bold text-white/85 leading-none text-center">{etiqueta}</span>
     </button>
+  );
+}
+
+// Fila de ajuste a pantalla completa: rótulo, deslizador y valor. El rótulo
+// tiene ancho fijo para que los tres deslizadores arranquen a la misma altura y
+// el de intensidad no salte al abrir o cerrar Ajustes.
+function FilaAjuste({ etiqueta, valor, children }: { etiqueta: string; valor: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="w-[80px] shrink-0 text-[10px] font-bold uppercase text-white/75 tracking-wider">{etiqueta}</span>
+      {children}
+      <span className="w-10 shrink-0 text-[11px] font-code font-bold text-white text-right">{valor}</span>
+    </div>
+  );
+}
+
+// Resolución de trabajo de las fotos. Va arriba de los filtros, como en el
+// escritorio, porque es una decisión que se toma ANTES de procesar: al fondo
+// del panel pasaba inadvertida. Las dos opciones se muestran juntas para que se
+// vea cuál está activa, y el recuadro queda en rojo mientras se trabaja a menos
+// que la resolución real (elegido 2000 px, o la foto pasa el tope del celular).
+function ResolucionDeTrabajo({ completa, natW, natH, w, h, onCambiar }: {
+  completa: boolean; natW: number; natH: number; w: number; h: number; onCambiar(completa: boolean): void;
+}) {
+  const topada = completa && Math.max(natW, natH) > TOPE_CELULAR;
+  const reducida = !completa || topada;
+  return (
+    <Card className={cn("p-4 space-y-2 shadow-inner bg-muted/10", reducida ? "border-accent" : "border-border")}>
+      <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Resoluci&oacute;n de trabajo</label>
+      <div className="grid grid-cols-2 gap-2">
+        {[{ v: true, l: "Completa" }, { v: false, l: `${LADO_REDUCIDO} px` }].map(o => (
+          <button
+            key={String(o.v)}
+            onClick={() => onCambiar(o.v)}
+            aria-pressed={completa === o.v}
+            className={cn(
+              "py-1.5 rounded-lg border text-[11px] font-bold transition-all",
+              completa === o.v ? "bg-accent border-accent text-white shadow-sm" : "bg-card border-border text-muted-foreground hover:bg-muted"
+            )}
+          >
+            {o.l}
+          </button>
+        ))}
+      </div>
+      <p className={cn("text-[10px] font-code", reducida ? "text-accent font-bold" : "text-muted-foreground")}>
+        {w} &times; {h} px{" "}
+        {!completa
+          ? `· reducida de ${natW}×${natH}`
+          : topada
+            ? `· tope del celular (orig. ${natW}×${natH})`
+            : "· la resolución real de la foto"}
+      </p>
+      <p className={cn(AYUDA, "text-muted-foreground")}>
+        {!completa
+          ? "Más rápido, pero se procesa menos detalle."
+          : topada
+            ? `Más de ${TOPE_CELULAR} px no entra en la memoria de un celular. El escritorio la procesa entera, hasta ${TOPE_ESCRITORIO} px.`
+            : "La misma foto da el mismo resultado que en el escritorio."}
+      </p>
+    </Card>
   );
 }
 
@@ -219,6 +285,16 @@ export default function OpuntiaColor() {
   const [imageSize, setImageSize] = useState({ w: 0, h: 0 });
   const [metadata, setMetadata] = useState<ImageMetadata | null>(null);
   const [isFieldMode, setIsFieldMode] = useState(false);
+  // Resolución de trabajo de las fotos: completa por defecto, como en el
+  // escritorio, o 2000 px. Dura lo que dura la sesión.
+  const [fullRes, setFullRes] = useState(true);
+  // Se está codificando la imagen con un contraste o saturación nuevos.
+  const [aplicandoAjustes, setAplicandoAjustes] = useState(false);
+  // Número de la última pasada de ajustes (ver applyPost) y el resultado del
+  // filtro vigente, para descartar codificaciones que quedaron viejas.
+  const postSeqRef = useRef(0);
+  const filteredRef = useRef<ImageData | null>(null);
+  useEffect(() => { filteredRef.current = filteredImageData; }, [filteredImageData]);
 
   // Modo en vivo
   const [isLiveMode, setIsLiveMode] = useState(false);
@@ -233,6 +309,9 @@ export default function OpuntiaColor() {
   const [livePaused, setLivePaused] = useState(false);
   const [liveCompare, setLiveCompare] = useState(false);
   const [liveImmersive, setLiveImmersive] = useState(false);
+  // A pantalla completa: los deslizadores de intensidad, contraste y
+  // saturación en lugar de la tira de filtros.
+  const [liveAjustes, setLiveAjustes] = useState(false);
   // Lo que informa el visor una vez por segundo: motor, resolución de trabajo,
   // lo que entrega la cámara y cuadros por segundo. Se muestra en pantalla
   // para poder consignarlo al reportar.
@@ -260,10 +339,23 @@ export default function OpuntiaColor() {
   // sitio estático no existe localStorage.
   useEffect(() => {
     const c = leerPreferencia('opc_envivo_calidad');
-    if (c === 'hd' || c === 'fhd' || c === '4k') setLiveTier(c);
+    if (c === 'fhd' || c === '4k') setLiveTier(c);
+    // Quien había elegido HD lo hizo para aliviar el equipo: pasa a la más
+    // liviana de las que quedan.
+    else if (c === 'hd') { setLiveTier('fhd'); guardarPreferencia('opc_envivo_calidad', 'fhd'); }
     const r = leerPreferencia('opc_envivo_ruido');
     if (r === '0' || r === '1' || r === '2') setLiveDenoise(Number(r) as Denoise);
   }, []);
+
+  // Deja la vista sin resultado y anula una codificación en curso, que si no
+  // terminaría mostrando la imagen anterior (ver applyPost).
+  const descartarProcesado = () => {
+    postSeqRef.current++;
+    setProcessedSrc(null);
+    setFilteredImageData(null);
+    setAplicandoAjustes(false);
+    setIsProcessing(false);
+  };
 
   const stopLiveMode = useCallback(() => {
     liveStreamRef.current?.getTracks().forEach(track => track.stop());
@@ -279,7 +371,7 @@ export default function OpuntiaColor() {
   }, []);
 
   const abrirCamara = async (tier: LiveTier) => {
-    const t = LIVE_TIERS.find(x => x.id === tier) ?? LIVE_TIERS[2];
+    const t = LIVE_TIERS.find(x => x.id === tier) ?? LIVE_TIERS[LIVE_TIERS.length - 1];
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: 'environment' },
@@ -330,7 +422,7 @@ export default function OpuntiaColor() {
 
     try {
       await abrirCamara(liveTier);
-      setProcessedSrc(null);
+      descartarProcesado();
       setImageSrc("LIVE_STREAM");
       setActiveFilterId(prev => prev ?? "crgb");
       setLivePaused(false);
@@ -404,11 +496,15 @@ export default function OpuntiaColor() {
   // A pantalla completa, la tira de filtros arranca mostrando el que está en
   // uso: si quedaba fuera de la vista no había forma de saber cuál era.
   const tiraRef = useRef<HTMLDivElement>(null);
+  // Lo mismo al cerrar Ajustes, que vuelve a mostrar la tira.
   useEffect(() => {
-    if (!liveImmersive) return;
+    if (!liveImmersive || liveAjustes) return;
     const activo = tiraRef.current?.querySelector('[data-activo="true"]') as HTMLElement | null;
     activo?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-  }, [liveImmersive, activeFilterId]);
+  }, [liveImmersive, liveAjustes, activeFilterId]);
+
+  // Al volver a la pantalla completa se arranca otra vez con la tira de filtros.
+  useEffect(() => { if (!liveImmersive) setLiveAjustes(false); }, [liveImmersive]);
 
   // Con el visor a pantalla completa, la página de abajo no se desplaza.
   useEffect(() => {
@@ -422,8 +518,7 @@ export default function OpuntiaColor() {
   useEffect(() => stopLiveMode, [stopLiveMode]);
 
   const handleClearStack = () => {
-    setProcessedSrc(null);
-    setFilteredImageData(null);
+    descartarProcesado();
     setActiveFilterId(null);
     setFrozenStore({});
     toast({ title: "Memoria de Filtros Limpia" });
@@ -446,18 +541,13 @@ export default function OpuntiaColor() {
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        const maxDim = 2000;
-        let w = img.naturalWidth, h = img.naturalHeight;
-        if (w > maxDim || h > maxDim) {
-          const scale = maxDim / Math.max(w, h);
-          w = Math.round(w * scale);
-          h = Math.round(h * scale);
-        }
-        setImageSize({ w, h });
+        // Hasta v3.6.0 toda foto se achicaba a 2000 px. Desde v3.7.0 se
+        // trabaja a la resolución real, como en el escritorio, con el tope del
+        // celular (ver src/lib/resolucion.ts).
+        setImageSize(tamanoDeTrabajo(img.naturalWidth, img.naturalHeight, fullRes));
         setImage(img);
         setImageSrc(e.target?.result as string);
-        setProcessedSrc(null);
-        setFilteredImageData(null);
+        descartarProcesado();
         setActiveFilterId(null);
         setSelection(null);
         setSelectionTool(null);
@@ -466,7 +556,22 @@ export default function OpuntiaColor() {
       img.src = e.target?.result as string;
     };
     reader.readAsDataURL(file);
-  }, [stopLiveMode]);
+  }, [stopLiveMode, fullRes]);
+
+  // Cambiar la resolución de trabajo con una foto abierta la vuelve a su
+  // estado inicial, como en el escritorio: un resultado calculado a otra escala
+  // ya no corresponde, y la zona marcada se pierde con él.
+  const cambiarResolucion = (completa: boolean) => {
+    if (completa === fullRes) return;
+    setFullRes(completa);
+    if (!image) return;
+    setImageSize(tamanoDeTrabajo(image.naturalWidth, image.naturalHeight, completa));
+    descartarProcesado();
+    setActiveFilterId(null);
+    setSelection(null);
+    setSelectionTool(null);
+    setFrozenStore({});
+  };
 
   // Capturar: el cuadro actual (ya limpio de ruido si la reducción está
   // activa) pasa a la vista de foto y se procesa con el motor de referencia,
@@ -520,13 +625,13 @@ export default function OpuntiaColor() {
       try {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
-        if (!ctx) return;
+        if (!ctx) throw new Error("Sin contexto 2D");
         canvas.width = imageSize.w;
         canvas.height = imageSize.h;
 
         let sourceData: ImageData;
-        if (isStacking && processedSrc) {
-          ctx.putImageData(filteredImageData!, 0, 0);
+        if (isStacking && filteredImageData) {
+          ctx.putImageData(filteredImageData, 0, 0);
           sourceData = ctx.getImageData(0, 0, imageSize.w, imageSize.h);
         } else {
           ctx.drawImage(image, 0, 0, imageSize.w, imageSize.h);
@@ -536,22 +641,30 @@ export default function OpuntiaColor() {
         const mask = selection ? getMaskArray(selection) : null;
         const currentStore = { frozen: frozenStore[filterId] || null };
         const result = filter.fn(sourceData, int, mask, currentStore);
-        
+
         if (currentStore.frozen) {
           setFrozenStore((prev: any) => ({ ...prev, [filterId]: currentStore.frozen }));
         }
 
         // El PNG lo genera el efecto que observa filteredImageData: llamarlo
-        // también acá codificaba la imagen dos veces por cada pasada.
+        // también acá codificaba la imagen dos veces por cada pasada. El aviso
+        // de "Analizando" lo levanta ese efecto cuando la imagen ya está lista:
+        // a resolución completa la codificación también tarda.
         setFilteredImageData(result);
-        setIsProcessing(false);
       } catch (err) {
         console.error(err);
-        toast({ title: "Error de procesamiento", variant: "destructive" });
+        // A resolución completa lo más probable es que no haya alcanzado la
+        // memoria del equipo: el motor pide unos 52 bytes por píxel.
+        const grande = Math.max(imageSize.w, imageSize.h) > LADO_REDUCIDO;
+        toast({
+          title: "Error de procesamiento",
+          description: grande ? "Puede faltar memoria para esta resolución. Probá con 2000 px." : undefined,
+          variant: "destructive",
+        });
         setIsProcessing(false);
       }
     }, 50);
-  }, [image, imageSize, processedSrc, isStacking, selection, filteredImageData, frozenStore, isLiveMode]);
+  }, [image, imageSize, isStacking, selection, filteredImageData, frozenStore, isLiveMode]);
 
   const getMaskArray = (sel: Selection): Uint8Array => {
     const { w, h } = imageSize;
@@ -591,15 +704,62 @@ export default function OpuntiaColor() {
     return mask;
   };
 
-  const applyPost = (base: ImageData) => {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    canvas.width = imageSize.w;
-    canvas.height = imageSize.h;
-    const res = OPC.applyPostProcessing(base, contrast, saturation);
-    ctx.putImageData(res, 0, 0);
-    setProcessedSrc(canvas.toDataURL("image/png"));
+  // La imagen procesada se codifica como PNG en un blob y no en una data URL:
+  // toBlob no congela la pantalla mientras codifica (a resolución completa son
+  // segundos en un celular) y el blob no duplica la imagen como texto base64.
+  // Cada pasada lleva un número: si mientras codificaba llegó otro ajuste, otro
+  // resultado u otra foto, su imagen ya no corresponde y se descarta.
+  const applyPost = async (base: ImageData) => {
+    const seq = ++postSeqRef.current;
+    setAplicandoAjustes(true);
+    let blob: Blob | null = null;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = base.width;
+      canvas.height = base.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Sin contexto 2D");
+      ctx.putImageData(OPC.applyPostProcessing(base, contrast, saturation), 0, 0);
+      blob = await new Promise<Blob | null>(res => canvas.toBlob(res, "image/png"));
+    } catch (err) {
+      console.error(err);
+    }
+    if (seq !== postSeqRef.current || filteredRef.current !== base) return;
+    if (blob) setProcessedSrc(URL.createObjectURL(blob));
+    else toast({ title: "No se pudo mostrar el resultado", description: "Probá con 2000 px.", variant: "destructive" });
+    setAplicandoAjustes(false);
+    setIsProcessing(false);
+  };
+
+  // Cada imagen procesada vive en un blob: al reemplazarla se suelta la
+  // anterior, si no cada pasada dejaba retenida una copia en la memoria.
+  useEffect(() => {
+    const url = processedSrc;
+    return () => { if (url?.startsWith("blob:")) URL.revokeObjectURL(url); };
+  }, [processedSrc]);
+
+  // El reporte lleva la imagen procesada a 2000 px como máximo: en la hoja
+  // ocupa unos 8 cm, y jsPDF tarda mucho y agota la memoria del celular si
+  // tiene que recomprimir un PNG de 12 megapíxeles. La imagen a resolución
+  // completa se baja con Descargar.
+  const imagenParaReporte = (): string | null => {
+    if (!filteredImageData) return null;
+    const completa = document.createElement("canvas");
+    completa.width = filteredImageData.width;
+    completa.height = filteredImageData.height;
+    const c1 = completa.getContext("2d");
+    if (!c1) return null;
+    c1.putImageData(OPC.applyPostProcessing(filteredImageData, contrast, saturation), 0, 0);
+    const { w, h } = tamanoDeTrabajo(completa.width, completa.height, false);
+    if (w === completa.width && h === completa.height) return completa.toDataURL("image/png");
+    const chica = document.createElement("canvas");
+    chica.width = w;
+    chica.height = h;
+    const c2 = chica.getContext("2d");
+    if (!c2) return null;
+    c2.imageSmoothingQuality = "high";
+    c2.drawImage(completa, 0, 0, w, h);
+    return chica.toDataURL("image/png");
   };
 
   // Reaplicación automática al mover la intensidad o terminar una selección.
@@ -625,8 +785,16 @@ export default function OpuntiaColor() {
     return () => clearTimeout(timer);
   }, [intensity, selection, isDrawing, image, isLiveMode, isStacking]);
 
+  // Un resultado nuevo del filtro se muestra enseguida; contraste y saturación
+  // esperan a que el deslizador se aquiete un poco, si no cada paso dispararía
+  // una codificación entera.
+  const ultimoBaseRef = useRef<ImageData | null>(null);
   useEffect(() => {
-    if (filteredImageData && !isLiveMode) applyPost(filteredImageData);
+    if (!filteredImageData || isLiveMode) return;
+    const nuevo = ultimoBaseRef.current !== filteredImageData;
+    ultimoBaseRef.current = filteredImageData;
+    const t = setTimeout(() => applyPost(filteredImageData), nuevo ? 0 : 150);
+    return () => clearTimeout(t);
   }, [contrast, saturation, isLiveMode, filteredImageData]);
 
   // Cambiar de zona invalida las estadísticas congeladas: en CRGB, DS-LAB, LDS
@@ -705,7 +873,7 @@ export default function OpuntiaColor() {
     stopLiveMode();
     setImage(null);
     setImageSrc(null);
-    setProcessedSrc(null);
+    descartarProcesado();
     setActiveFilterId(null);
     setSelection(null);
     setSelectionTool(null);
@@ -743,7 +911,7 @@ export default function OpuntiaColor() {
             {/* El logo estaba escrito y sin usar en ningún lado desde el
                 principio. Es la misma identidad que el icono de la PWA. */}
             <OpuntiaLogo className="w-7 h-7 shrink-0" />
-            OpuntiaColor <span className="bg-accent text-white text-[10px] px-1.5 py-0.5 rounded-full">v3.6.0</span>
+            OpuntiaColor <span className="bg-accent text-white text-[10px] px-1.5 py-0.5 rounded-full">v3.7.0</span>
           </h1>
         </div>
         <div className="flex gap-2">
@@ -755,11 +923,12 @@ export default function OpuntiaColor() {
             </DialogTrigger>
             <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>OPC v3.6.0 — Motor de Campo</DialogTitle>
+                <DialogTitle>OPC v3.7.0 — Motor de Campo</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 text-sm py-4">
-                <p>· <strong>En vivo</strong> — Los doce filtros sobre la cámara, calculados en la GPU a la resolución que entregue (hasta 4K), con reducción de ruido, zoom, comparación con el original y pantalla completa. Capturar pasa el cuadro al motor de referencia.</p>
-                <p>· <strong>Algoritmos Precisos</strong> — Alineación científica total con la referencia de escritorio v3.6.0: la salida de las fotos coincide byte a byte.</p>
+                <p>· <strong>Resolución completa</strong> — Las fotos se procesan a su tamaño real, como en el escritorio, hasta {TOPE_CELULAR} px de lado: más no entra en la memoria de un celular. Con 2000 px va más rápido y se reproduce el resultado de v3.6.0, que achicaba toda foto a ese tamaño.</p>
+                <p>· <strong>En vivo</strong> — Los doce filtros sobre la cámara, calculados en la GPU a la resolución que entregue (Full HD o 4K), con reducción de ruido, zoom, comparación con el original y pantalla completa, donde Ajustes da intensidad, contraste y saturación. Capturar pasa el cuadro al motor de referencia.</p>
+                <p>· <strong>Algoritmos Precisos</strong> — Alineación científica con la referencia de escritorio v3.6.0: a la misma resolución, la salida de las fotos coincide byte a byte.</p>
                 <p>· <strong>Estadísticas por zona</strong> — Con una zona marcada, la decorrelación (CRGB, DS-LAB, LDS, YBK) se calcula con los datos de esa zona: mejor separación de pigmentos locales, como en DStretch.</p>
                 <p>· <strong>Modo PWA</strong> — Funcionamiento 100% offline tras la instalación.</p>
                 {/* Aviso legal de la GPL: la licencia pide que una interfaz
@@ -781,7 +950,10 @@ export default function OpuntiaColor() {
             {isFieldMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </Button>
           {processedSrc && !isLiveMode && (
-            <Button size="sm" className="bg-accent hover:bg-accent/90 text-white border-none h-8 px-3" onClick={() => generateReport(imageSrc!, processedSrc!, metadata!, FILTERS.find(f => f.id === activeFilterId)?.name || "Original", intensity, imageSize.w, imageSize.h)}>
+            <Button size="sm" className="bg-accent hover:bg-accent/90 text-white border-none h-8 px-3" onClick={() => {
+              const procesada = imagenParaReporte();
+              if (procesada) generateReport(imageSrc!, procesada, metadata!, FILTERS.find(f => f.id === activeFilterId)?.name || "Original", intensity, imageSize.w, imageSize.h);
+            }}>
               <FileText className="w-3 h-3 mr-2" /> Reporte
             </Button>
           )}
@@ -802,7 +974,7 @@ export default function OpuntiaColor() {
             {!imageSrc ? (
               <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground py-20">
                 <FileImage className="w-16 h-16 opacity-10 mb-4" />
-                <p className="text-sm font-bold uppercase tracking-widest">OpuntiaColor v3.6.0</p>
+                <p className="text-sm font-bold uppercase tracking-widest">OpuntiaColor v3.7.0</p>
                 <p className="text-[10px] opacity-60">Subí una imagen o abrí la cámara en vivo</p>
               </div>
             ) : (
@@ -900,7 +1072,7 @@ export default function OpuntiaColor() {
                                 )}
                               </div>
                               {liveInfo.width > 0 && (
-                                <span className="text-[9px] font-code text-white/80 bg-black/40 px-2 py-0.5 rounded">
+                                <span className="text-[10px] font-code text-white/80 bg-black/40 px-2 py-0.5 rounded">
                                   {liveInfo.width}&times;{liveInfo.height} &middot; {Math.round(liveInfo.fps)} fps{liveInfo.engine === 'cpu' ? ' · CPU' : ''}
                                 </span>
                               )}
@@ -917,28 +1089,55 @@ export default function OpuntiaColor() {
                             className="absolute bottom-0 inset-x-0 z-30 px-3 pt-10 space-y-3 bg-gradient-to-t from-black/85 via-black/60 to-transparent"
                             style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}
                           >
+                            {/* Ajustes va al costado, apoyado sobre la barra: en la
+                                fila de abajo ya no entra otro botón sin achicarlos a
+                                todos. Abre intensidad, contraste y saturación en el
+                                lugar de la tira de filtros, así no tapa más imagen
+                                que la que ya tapa la barra. Sin filtro no hay nada
+                                que ajustar: la cámara va tal cual. */}
                             {activeFilterId && (
-                              <div className="flex items-center gap-3">
-                                <span className="text-[9px] font-bold uppercase text-white/70 tracking-widest">Intensidad</span>
-                                <Slider value={[intensity]} onValueChange={v => setIntensity(v[0])} min={0.2} max={5.0} step={0.1} className="flex-1" />
-                                <span className="text-[11px] font-code font-bold text-white w-9 text-right">{intensity.toFixed(1)}&times;</span>
+                              <div className="absolute right-3 -top-5">
+                                <BotonRedondo activo={liveAjustes} onClick={() => setLiveAjustes(a => !a)} etiqueta="Ajustes">
+                                  <SlidersHorizontal className="w-5 h-5" />
+                                </BotonRedondo>
                               </div>
                             )}
-                            <div ref={tiraRef} className="flex gap-1.5 overflow-x-auto -mx-3 px-3 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                              {[{ id: null as string | null, name: 'Original', icon: '◻' }, ...FILTERS].map(f => (
-                                <button
-                                  key={f.id ?? 'original'}
-                                  data-activo={activeFilterId === f.id}
-                                  onClick={() => setActiveFilterId(f.id)}
-                                  className={cn(
-                                    "shrink-0 flex items-center gap-1.5 pl-2 pr-3 h-9 rounded-full border text-[11px] font-bold whitespace-nowrap transition-colors",
-                                    activeFilterId === f.id ? "bg-white text-black border-white" : "bg-black/50 text-white border-white/25"
-                                  )}
-                                >
-                                  <span className="text-sm leading-none">{f.icon}</span>{f.name}
-                                </button>
-                              ))}
-                            </div>
+                            {activeFilterId && liveAjustes ? (
+                              <div className="space-y-2.5">
+                                <FilaAjuste etiqueta="Intensidad" valor={`${intensity.toFixed(1)}×`}>
+                                  <Slider value={[intensity]} onValueChange={v => setIntensity(v[0])} min={0.2} max={5.0} step={0.1} className="flex-1" />
+                                </FilaAjuste>
+                                <FilaAjuste etiqueta="Contraste" valor={(contrast > 0 ? "+" : "") + contrast}>
+                                  <Slider value={[contrast]} onValueChange={v => setContrast(v[0])} min={-80} max={80} step={5} className="flex-1" />
+                                </FilaAjuste>
+                                <FilaAjuste etiqueta="Saturación" valor={(saturation > 0 ? "+" : "") + saturation}>
+                                  <Slider value={[saturation]} onValueChange={v => setSaturation(v[0])} min={-100} max={100} step={5} className="flex-1" />
+                                </FilaAjuste>
+                              </div>
+                            ) : (
+                              <>
+                                {activeFilterId && (
+                                  <FilaAjuste etiqueta="Intensidad" valor={`${intensity.toFixed(1)}×`}>
+                                    <Slider value={[intensity]} onValueChange={v => setIntensity(v[0])} min={0.2} max={5.0} step={0.1} className="flex-1" />
+                                  </FilaAjuste>
+                                )}
+                                <div ref={tiraRef} className="flex gap-1.5 overflow-x-auto -mx-3 px-3 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                  {[{ id: null as string | null, name: 'Original', icon: '◻' }, ...FILTERS].map(f => (
+                                    <button
+                                      key={f.id ?? 'original'}
+                                      data-activo={activeFilterId === f.id}
+                                      onClick={() => setActiveFilterId(f.id)}
+                                      className={cn(
+                                        "shrink-0 flex items-center gap-1.5 pl-2 pr-3 h-9 rounded-full border text-[11px] font-bold whitespace-nowrap transition-colors",
+                                        activeFilterId === f.id ? "bg-white text-black border-white" : "bg-black/50 text-white border-white/25"
+                                      )}
+                                    >
+                                      <span className="text-sm leading-none">{f.icon}</span>{f.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            )}
                             <div className="flex items-center justify-between px-1">
                               <BotonRedondo activo={liveCompare} onClick={() => setLiveCompare(c => !c)} etiqueta="Comparar">
                                 <Columns2 className="w-5 h-5" />
@@ -1018,6 +1217,14 @@ export default function OpuntiaColor() {
                       Dibujá la zona · {SELECTION_TOOLS.find(t => t.id === selectionTool)?.name}
                     </div>
                   )}
+                  {/* A resolución completa, codificar un contraste o una
+                      saturación nuevos lleva un momento: que no parezca que el
+                      deslizador no hizo nada. */}
+                  {aplicandoAjustes && !isProcessing && !isLiveMode && (
+                    <div className="absolute top-3 right-3 z-40 bg-black/60 text-white text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-lg pointer-events-none">
+                      <RefreshCw className="w-3 h-3 animate-spin" /> Aplicando
+                    </div>
+                  )}
                   {isProcessing && (
                     <div className="absolute inset-0 bg-background/60 backdrop-blur-sm z-50 flex items-center justify-center rounded-xl">
                       <div className="bg-white text-black px-5 py-3 rounded-full shadow-xl flex items-center gap-3 border border-border">
@@ -1038,7 +1245,7 @@ export default function OpuntiaColor() {
                     {isLiveMode && liveInfo.fps > 0 && (
                       <span className="whitespace-nowrap">{Math.round(liveInfo.fps)} FPS{liveInfo.engine === 'cpu' ? ' · CPU' : ''}</span>
                     )}
-                    <span className="hidden sm:flex items-center gap-1"><Zap className="w-3 h-3 text-accent" /> Motor v3.6.0</span>
+                    <span className="hidden sm:flex items-center gap-1"><Zap className="w-3 h-3 text-accent" /> Motor v3.7.0</span>
                     {isStacking && processedSrc && <span className="flex items-center gap-1 text-accent font-bold animate-pulse"><StackingIcon className="w-3 h-3" /> STACK ACTIVO</span>}
                   </div>
                   {(processedSrc || isLiveMode) && (
@@ -1092,6 +1299,18 @@ export default function OpuntiaColor() {
                 <Button variant="outline" className="w-full h-10 border-accent text-accent hover:bg-accent hover:text-white font-bold shadow-sm" onClick={handleReset}><PlusCircle className="w-4 h-4 mr-2" /> Nuevo</Button>
               </div>
 
+              {/* Solo si la foto pasa de 2000 px: si no, las dos opciones dan lo mismo. */}
+              {!isLiveMode && image && Math.max(image.naturalWidth, image.naturalHeight) > LADO_REDUCIDO && (
+                <ResolucionDeTrabajo
+                  completa={fullRes}
+                  natW={image.naturalWidth}
+                  natH={image.naturalHeight}
+                  w={imageSize.w}
+                  h={imageSize.h}
+                  onCambiar={cambiarResolucion}
+                />
+              )}
+
               {isLiveMode && (
                 <Card className="p-4 space-y-3 shadow-inner bg-muted/10 border-border">
                   <div className="flex justify-between items-center">
@@ -1102,7 +1321,7 @@ export default function OpuntiaColor() {
                       </span>
                     )}
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {LIVE_TIERS.map(t => (
                       <button
                         key={t.id}
@@ -1115,12 +1334,12 @@ export default function OpuntiaColor() {
                         )}
                       >
                         <span className="text-[11px]">{t.label}</span>
-                        <span className="text-[8px] font-normal opacity-70">{t.detalle}</span>
+                        <span className="text-[9px] font-normal opacity-70">{t.detalle}</span>
                       </button>
                     ))}
                   </div>
                   {liveInfo.camW > 0 && (
-                    <dl className="text-[9px] font-code text-muted-foreground border-t border-border pt-2 space-y-1">
+                    <dl className="text-[10px] font-code text-muted-foreground border-t border-border pt-2 space-y-1">
                       <div className="flex justify-between gap-3">
                         <dt>C&aacute;mara entrega</dt>
                         <dd className="font-bold">{liveInfo.camW}&times;{liveInfo.camH}</dd>
@@ -1139,22 +1358,22 @@ export default function OpuntiaColor() {
                     const pedido = LIVE_TIERS.find(t => t.id === liveTier)!;
                     const mayor = Math.max(liveInfo.camW, liveInfo.camH);
                     return mayor < pedido.w ? (
-                      <p className="text-[9px] text-accent leading-snug font-bold">
+                      <p className={cn(AYUDA, "text-accent font-bold")}>
                         Tu c&aacute;mara no entrega {pedido.label} por esta v&iacute;a: lo m&aacute;ximo que da es {liveInfo.camW}&times;{liveInfo.camH}, y se trabaja a eso.
                       </p>
                     ) : null;
                   })()}
-                  {liveInfo.engine === 'gpu' && liveInfo.fps > 0 && liveInfo.fps < 12 && liveTier !== 'hd' && !livePaused && (
-                    <p className="text-[9px] text-accent leading-snug font-bold">
-                      El video va a {Math.round(liveInfo.fps)} cuadros por segundo. Si se entrecorta, baj&aacute; a {liveTier === '4k' ? 'Full HD' : 'HD'}: este equipo no da para m&aacute;s a esta resoluci&oacute;n.
+                  {liveInfo.engine === 'gpu' && liveInfo.fps > 0 && liveInfo.fps < 12 && liveTier === '4k' && !livePaused && (
+                    <p className={cn(AYUDA, "text-accent font-bold")}>
+                      El video va a {Math.round(liveInfo.fps)} {Math.round(liveInfo.fps) === 1 ? 'cuadro' : 'cuadros'} por segundo. Si se entrecorta, baj&aacute; a Full HD: este equipo no da para m&aacute;s en 4K.
                     </p>
                   )}
                   {liveInfo.engine === 'cpu' && (
-                    <p className="text-[9px] text-accent leading-snug font-bold">
+                    <p className={cn(AYUDA, "text-accent font-bold")}>
                       Este equipo no ofrece procesamiento por GPU (WebGL2): el video se procesa en la CPU, achicado a {CPU_LIVE_MAX_WIDTH} px, y sin zoom ni reducci&oacute;n de ruido.
                     </p>
                   )}
-                  <p className="text-[9px] text-muted-foreground leading-snug">
+                  <p className={cn(AYUDA, "text-muted-foreground")}>
                     La imagen en vivo se calcula en la GPU con los mismos filtros. Para el registro, <strong>Capturar</strong> pasa el cuadro a la vista de foto y lo procesa con el motor de referencia.
                   </p>
                 </Card>
@@ -1181,7 +1400,7 @@ export default function OpuntiaColor() {
                         </button>
                       ))}
                     </div>
-                    <p className="text-[9px] text-muted-foreground leading-snug">
+                    <p className={cn(AYUDA, "text-muted-foreground")}>
                       Promedia los &uacute;ltimos cuadros donde la imagen est&aacute; quieta. La decorrelaci&oacute;n amplifica el granulado de color del sensor: con el equipo firme o apoyado, Media lo baja a menos de la mitad y Alta a la cuarta parte. Al mover la c&aacute;mara, Alta deja una estela breve en los detalles tenues.
                     </p>
                   </div>
@@ -1192,7 +1411,7 @@ export default function OpuntiaColor() {
                       </Label>
                       <Switch id="fijar-colores" checked={liveLock} onCheckedChange={setLiveLock} />
                     </div>
-                    <p className="text-[9px] text-muted-foreground leading-snug">
+                    <p className={cn(AYUDA, "text-muted-foreground")}>
                       {liveLock
                         ? "Las estadísticas de la decorrelación quedan congeladas: el mismo pigmento conserva su color aunque muevas la cámara."
                         : "Apuntá a una zona representativa del panel y fijá: los colores dejan de cambiar con cada encuadre."}
@@ -1223,7 +1442,7 @@ export default function OpuntiaColor() {
                     <span className="text-base bg-background/10 w-10 h-10 flex items-center justify-center rounded-xl shadow-sm">◻</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-[11px] font-bold truncate leading-tight uppercase tracking-tighter">Original</p>
-                      <p className={cn("text-[9px] truncate opacity-60 font-medium", activeFilterId === null ? "text-white" : "text-muted-foreground")}>La c&aacute;mara sin filtro, para encuadrar</p>
+                      <p className={cn("text-[10px] truncate opacity-60 font-medium", activeFilterId === null ? "text-white" : "text-muted-foreground")}>La c&aacute;mara sin filtro, para encuadrar</p>
                     </div>
                   </button>
                 )}
@@ -1239,7 +1458,7 @@ export default function OpuntiaColor() {
                     <span className="text-base bg-background/10 w-10 h-10 flex items-center justify-center rounded-xl shadow-sm">{f.icon}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-[11px] font-bold truncate leading-tight uppercase tracking-tighter">{f.name}</p>
-                      <p className={cn("text-[9px] truncate opacity-60 font-medium", activeFilterId === f.id ? "text-white" : "text-muted-foreground")}>{f.desc}</p>
+                      <p className={cn("text-[10px] truncate opacity-60 font-medium", activeFilterId === f.id ? "text-white" : "text-muted-foreground")}>{f.desc}</p>
                     </div>
                   </button>
                 ))}
@@ -1254,7 +1473,7 @@ export default function OpuntiaColor() {
                     {(selection || selectionTool) && (
                       <button
                         onClick={clearSelection}
-                        className="flex items-center gap-1 text-[9px] font-bold text-destructive hover:bg-destructive/10 px-2 py-0.5 rounded transition-colors"
+                        className="flex items-center gap-1 text-[10px] font-bold text-destructive hover:bg-destructive/10 px-2 py-0.5 rounded transition-colors"
                       >
                         <X className="w-3 h-3" /> Quitar
                       </button>
@@ -1273,11 +1492,11 @@ export default function OpuntiaColor() {
                         )}
                       >
                         <t.Icon className="w-4 h-4" />
-                        <span className="text-[8px] leading-none text-center">{t.name}</span>
+                        <span className="text-[9px] leading-none text-center">{t.name}</span>
                       </button>
                     ))}
                   </div>
-                  <p className="text-[9px] text-muted-foreground leading-snug">
+                  <p className={cn(AYUDA, "text-muted-foreground")}>
                     {selectionTool
                       ? "Arrastrá sobre la imagen para marcar la zona. Al soltar se aplica el filtro."
                       : selection
@@ -1295,7 +1514,7 @@ export default function OpuntiaColor() {
                     </Label>
                     <Switch id="acumular" checked={isStacking} onCheckedChange={setIsStacking} />
                   </div>
-                  <p className="text-[9px] text-muted-foreground leading-snug">
+                  <p className={cn(AYUDA, "text-muted-foreground")}>
                     {isStacking
                       ? "Cada filtro se aplica sobre el resultado anterior. La intensidad deja de reaplicarse sola: elegí el valor y volvé a tocar el filtro."
                       : "Cada filtro parte siempre de la imagen original."}
@@ -1310,7 +1529,7 @@ export default function OpuntiaColor() {
                     {hayGPS && (
                       <button
                         onClick={copiarCoordenadas}
-                        className="flex items-center gap-1 text-[9px] font-bold text-accent hover:bg-accent/10 px-2 py-0.5 rounded transition-colors"
+                        className="flex items-center gap-1 text-[10px] font-bold text-accent hover:bg-accent/10 px-2 py-0.5 rounded transition-colors"
                       >
                         <Copy className="w-3 h-3" /> Copiar
                       </button>
@@ -1324,21 +1543,21 @@ export default function OpuntiaColor() {
                           {lat.toFixed(6)}, {lng.toFixed(6)}
                         </p>
                         {altitud !== null && (
-                          <p className="font-code text-[9px] text-muted-foreground">{Math.round(altitud)} m s. n. m.</p>
+                          <p className="font-code text-[10px] text-muted-foreground">{Math.round(altitud)} m s. n. m.</p>
                         )}
                       </div>
                     </div>
                   ) : (
                     <div className="flex items-start gap-2">
                       <MapPin className="w-4 h-4 text-muted-foreground/40 shrink-0 mt-0.5" />
-                      <p className="text-[10px] text-muted-foreground leading-snug">
+                      <p className={cn(AYUDA, "text-muted-foreground")}>
                         {origenEnVivo
                           ? "Cuadro capturado en vivo: el video de la cámara no lleva coordenadas. Para dejar el sitio registrado, sacá también una Foto."
                           : "La foto no trae coordenadas. Suele pasar con el GPS de la cámara apagado, o si el archivo pasó por una app de mensajería que borra los metadatos."}
                       </p>
                     </div>
                   )}
-                  <dl className="text-[9px] font-code space-y-1 border-t border-border pt-2">
+                  <dl className="text-[10px] font-code space-y-1 border-t border-border pt-2">
                     <div className="flex justify-between gap-3">
                       <dt className="text-muted-foreground shrink-0">Captura</dt>
                       <dd className="text-right truncate">{captura ?? "—"}</dd>
@@ -1361,7 +1580,7 @@ export default function OpuntiaColor() {
                     <Slider value={[intensity]} onValueChange={v => setIntensity(v[0])} min={0.2} max={5.0} step={0.1} className="py-2" />
                     <div className="flex flex-wrap gap-1 justify-between">
                       {PRESETS.map(p => (
-                        <button key={p.label} onClick={() => setIntensity(p.value)} className={cn("text-[9px] px-2 py-1 rounded-md border font-bold transition-all", intensity === p.value ? "bg-accent border-accent text-white shadow-sm scale-105" : "bg-card border-border text-muted-foreground hover:bg-muted")}>{p.label}</button>
+                        <button key={p.label} onClick={() => setIntensity(p.value)} className={cn("text-[10px] px-2 py-1 rounded-md border font-bold transition-all", intensity === p.value ? "bg-accent border-accent text-white shadow-sm scale-105" : "bg-card border-border text-muted-foreground hover:bg-muted")}>{p.label}</button>
                       ))}
                     </div>
                   </div>
@@ -1392,7 +1611,7 @@ export default function OpuntiaColor() {
         <div className="space-y-2 text-[10px] text-muted-foreground tracking-tight font-medium max-w-2xl mx-auto">
           <p>Dr. Emilio A. Villafañez · LATDAA · Fund. Félix de Azara · Universidad Nacional de Catamarca (UNCA), Argentina</p>
           <div className="flex items-center justify-center gap-4 pt-4 border-t border-border/50">
-            <span className="opacity-60 font-code uppercase tracking-widest font-bold">OpuntiaColor v3.6.0</span>
+            <span className="opacity-60 font-code uppercase tracking-widest font-bold">OpuntiaColor v3.7.0</span>
             <span className="bg-accent/10 text-accent px-2 py-0.5 rounded-full font-bold">OFFLINE READY</span>
           </div>
         </div>

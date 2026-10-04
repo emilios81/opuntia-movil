@@ -1,4 +1,4 @@
-# OpuntiaColor v3.6.0 — versión móvil
+# OpuntiaColor v3.7.0 — versión móvil
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21845133.svg)](https://doi.org/10.5281/zenodo.21845133)
 [![Licencia: GPL v3+](https://img.shields.io/badge/licencia-GPL--3.0--or--later-blue.svg)](LICENSE)
@@ -50,12 +50,16 @@ Aun sin instalarla, la app funciona abriéndola en el navegador.
   Bicromo, CRGB, DS-LAB, LDS, Micro-relieve, Relieve, YBK, CLAHE y Mapa de
   pigmentos. La salida coincide píxel a píxel con la versión de escritorio, y hay
   una prueba que lo comprueba: `npm run verificar`.
+- **Fotos a resolución completa** — se procesan a su tamaño real, como en el
+  escritorio, hasta 4096 px de lado, que es lo que aguanta la memoria de un
+  celular. Con 2000 px va más rápido.
 - **En vivo** — los doce filtros sobre la cámara, para recorrer un panel antes
   de fotografiarlo. Se calculan en la GPU a la resolución que entregue la
-  cámara: **HD, Full HD o 4K**.
+  cámara: **Full HD o 4K**.
 - **Reducción de ruido, zoom y comparación en vivo** — promedio de cuadros con
   detección de movimiento, zoom con dos dedos hasta ver el píxel, línea
-  divisoria contra el original y pantalla completa.
+  divisoria contra el original y pantalla completa, con intensidad, contraste y
+  saturación a mano.
 - **Fijar colores** — congela las estadísticas de la decorrelación para que un
   pigmento conserve su color al mover la cámara.
 - **Capturar** — el cuadro en vivo pasa a la vista de foto y se procesa con el
@@ -75,6 +79,76 @@ Aun sin instalarla, la app funciona abriéndola en el navegador.
   portapapeles. Si la foto no las trae, lo dice: estando todavía en el sitio se
   puede repetir la toma.
 - **Reportes PDF** con esos mismos metadatos y las dos imágenes.
+
+## v3.7.0 — Las fotos a resolución completa
+
+**Cambia los resultados con los valores por defecto.** Hasta v3.6.0 toda foto se
+achicaba a 2000 px de lado antes de procesarla. Ahora se procesa a su resolución
+real, como hace el escritorio desde su v3.6.0. Micro-relieve, Relieve y CLAHE
+dependen de la escala, así que lo procesado con v3.6.0 o anteriores no es
+comparable sin reprocesar. **Para reproducirlo, elegir 2000 px:** con esa opción
+el cálculo es el mismo de antes y la salida, idéntica.
+
+### Por qué
+
+Con el tope de 2000 px la misma foto daba un resultado en el celular y otro en la
+computadora, y se perdía lo que justifica tener dos versiones: que el dato no
+dependa del aparato. Además el modo en vivo filma en 4K, pero Capturar achicaba
+el cuadro a 2000 px antes de analizarlo.
+
+### El tope del celular: 4096 px
+
+El escritorio llega a 8192 px y el celular a 4096. Se midió cuánta memoria pide
+el motor según el tamaño de la foto. Los filtros de decorrelación (CRGB, DS-LAB y
+LDS) son los que más piden, unos 52 bytes por píxel:
+
+| Foto | Píxeles | Pico de memoria medido |
+|---|---|---|
+| 2000 × 1500 (el tope anterior) | 3 MP | ~200 MB |
+| 4032 × 3024 (celular típico) | 12 MP | ~700 MB |
+| 5712 × 4284 (iPhone 15 en adelante) | 24 MP | ~1,35 GB |
+| 8160 × 6120 (modo de 50 MP) | 50 MP | ~2,7 GB |
+
+Pasado el giga, lo más probable es que el sistema del celular cierre la pestaña.
+Con 4096 px entran enteras las fotos de 12 MP, que es lo que guarda por defecto
+la mayoría de los celulares, y las capturas 4K del modo en vivo. Para esas fotos
+el tamaño de trabajo es el mismo que en el escritorio y la salida coincide byte a
+byte. Una foto más grande se reduce a 4096 px y el panel lo avisa en rojo; para
+procesarla entera está el escritorio.
+
+### En el panel
+
+- **Resolución de trabajo**, arriba de todo, antes de los filtros: *Completa* o
+  *2000 px*, y debajo el tamaño que se va a procesar. Mientras se trabaja por
+  debajo de la resolución real, sea por elección o por el tope, el recuadro queda
+  en rojo. Aparece solo si la foto pasa de 2000 px.
+- A resolución completa cada filtro tarda más: en un celular, varios segundos.
+  La imagen resultante se codifica sin congelar la pantalla, y al mover contraste
+  o saturación un aviso indica que se está aplicando.
+- El **reporte PDF** lleva la imagen procesada a 2000 px como máximo. En la hoja
+  ocupa unos 8 cm, y con 12 MP el PDF se volvía lento e inmanejable. La imagen a
+  resolución completa se baja con *Descargar*.
+
+### En vivo
+
+- Sale **HD**: en el celular no se distinguía de Full HD. Quedan **Full HD** y
+  **4K**, que sigue siendo la opción por defecto. Quien tenía HD elegido pasa a
+  Full HD.
+- A pantalla completa, el botón **Ajustes**, al costado derecho, cambia la tira
+  de filtros por los deslizadores de **intensidad, contraste y saturación**. Va al
+  costado porque en la fila de abajo no entraba otro botón sin achicarlos a todos.
+
+### Textos
+
+Las explicaciones de los paneles (Fijar colores, Reducción de ruido, Selección,
+Acumular…) pasan de 9 a 10,5 px, y otros rótulos chicos suben un punto: en el
+celular no se leían.
+
+### Verificación
+
+`npm run verificar` suma la comparación del tamaño de trabajo contra
+`computeSize` del escritorio: son 142 comparaciones, todas idénticas. El motor de
+filtros no se tocó.
 
 ## v3.6.0 — En vivo: la cámara a resolución completa, en la GPU
 
@@ -200,8 +274,10 @@ npm run verificar-gpu  # compara el motor en vivo (GPU) contra el de referencia
 
 `npm run verificar` compila `src/lib/image-processing.ts` y corre sus filtros y
 los de `../OpuntiaColor/src/app.jsx` sobre las mismas imágenes sintéticas,
-comparando byte a byte. Son dos implementaciones distintas —TypeScript contra
-JSX—, así que la alineación no se ve leyendo el código. **Toda modificación del
+comparando byte a byte. También compara el tamaño de trabajo de las fotos
+(`src/lib/resolucion.ts`) con el que calcula el escritorio. Son dos
+implementaciones distintas —TypeScript contra JSX—, así que la alineación no se
+ve leyendo el código. **Toda modificación del
 motor tiene que pasar por ahí antes de publicar:** si las dos apps divergen, dos
 fotos del mismo panel dan resultados distintos según el aparato y el dato deja de
 ser comparable. Si el proyecto de escritorio está en otra carpeta:
@@ -237,6 +313,7 @@ El sitio vive en una subcarpeta (`/opuntia-movil/`), definida por `basePath` en
 
 ```
 src/lib/image-processing.ts   motor de los doce filtros (el de referencia)
+src/lib/resolucion.ts         tamaño de trabajo de las fotos (el cálculo del escritorio)
 src/lib/live-shaders.ts       los doce filtros portados a la GPU (GLSL)
 src/lib/live-stats.ts         estadísticas del video en vivo, con el mismo motor
 src/lib/live-gpu.ts           motor en vivo: cuadros, ruido, filtros y pantalla

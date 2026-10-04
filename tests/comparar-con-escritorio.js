@@ -56,14 +56,15 @@ global.ImageData = ImageData;
 // TypeScript actual, nunca contra un compilado que quedó viejo.
 const salida = fs.mkdtempSync(path.join(os.tmpdir(), "opc-movil-"));
 try {
-  execFileSync("npx", ["tsc", path.join("src", "lib", "image-processing.ts"),
+  execFileSync("npx", ["tsc", path.join("src", "lib", "image-processing.ts"), path.join("src", "lib", "resolucion.ts"),
     "--outDir", salida, "--module", "commonjs", "--target", "es2017", "--skipLibCheck"],
     { cwd: RAIZ, stdio: "pipe", shell: true });
 } catch (e) {
-  console.error("\nNo compila src/lib/image-processing.ts:\n" + (e.stdout || e.message).toString());
+  console.error("\nNo compila src/lib/image-processing.ts o src/lib/resolucion.ts:\n" + (e.stdout || e.message).toString());
   process.exit(2);
 }
 const movil = require(path.join(salida, "image-processing.js"));
+const resolucion = require(path.join(salida, "resolucion.js"));
 
 // --------------------------------------------- el núcleo del escritorio
 // src/app.jsx es JSX y desestructura React en el nivel superior, así que no se
@@ -195,6 +196,54 @@ for (const [filtro, fnMovil, fnEscritorio] of PARES) {
       }
     }
   }
+}
+
+// ------------------------------------------------- tamaño de trabajo
+// Desde v3.7.0 la móvil procesa las fotos a su resolución real, como el
+// escritorio. Que los filtros coincidan no alcanza si cada app achica la foto a
+// un tamaño distinto: la escala cambia Micro-relieve, Relieve y CLAHE. Se
+// compara contra `computeSize` del escritorio, que vive dentro del componente.
+const mCompute = fuente.match(/const computeSize = \(img, full\) => \{[\s\S]*?\n  \};/);
+if (!mCompute) {
+  console.error("no se encontró computeSize en el fuente del escritorio");
+  process.exit(2);
+}
+const computeSize = vm.runInContext("(function () { " + mCompute[0] + " return computeSize; })()", caja);
+
+const TAMANOS = [
+  [1600, 1200], [2000, 1500], [2001, 1125], [1080, 2400],           // chicas y al borde
+  [3840, 2160], [4000, 3000], [4032, 3024], [4080, 3072], [3024, 4032], // celular y capturas 4K
+  [4096, 4096], [4097, 3073],                                          // al borde del tope del celular
+  [5712, 4284], [6000, 4000], [8160, 6120], [8192, 5464], [12000, 9000], // más grandes
+];
+
+console.log("\x1b[1mTamaño de trabajo\x1b[0m");
+for (const [w, h] of TAMANOS) {
+  const img = { naturalWidth: w, naturalHeight: h };
+  const etiqueta = w + "×" + h;
+  const chequeos = [
+    // 2000 px: la misma reducción en las dos.
+    ["2000 px", resolucion.tamanoDeTrabajo(w, h, false), computeSize(img, false)],
+    // Con el tope del escritorio, la fórmula tiene que ser la misma.
+    ["completa, tope 8192", resolucion.tamanoDeTrabajo(w, h, true, resolucion.TOPE_ESCRITORIO), computeSize(img, true)],
+  ];
+  // Hasta el tope del celular, la resolución completa de la móvil es la del escritorio.
+  if (Math.max(w, h) <= resolucion.TOPE_CELULAR) {
+    chequeos.push(["completa en el celular", resolucion.tamanoDeTrabajo(w, h, true), computeSize(img, true)]);
+  }
+  let ok = true;
+  for (const [modo, a, b] of chequeos) {
+    corridas++;
+    if (a.w === b.w && a.h === b.h) {
+      iguales++;
+    } else {
+      ok = false;
+      regresiones.push("tamaño " + etiqueta + " (" + modo + "): móvil " + a.w + "×" + a.h + ", escritorio " + b.w + "×" + b.h);
+    }
+  }
+  const cel = resolucion.tamanoDeTrabajo(w, h, true), esc = computeSize(img, true);
+  const nota = cel.w === esc.w && cel.h === esc.h ? "igual al escritorio" : "\x1b[33mreducida por el tope del celular (escritorio: " + esc.w + "×" + esc.h + ")\x1b[0m";
+  console.log("  " + (ok ? "\x1b[32m✓\x1b[0m " : "\x1b[31m✗\x1b[0m ") + etiqueta.padEnd(12) + " completa en el celular: " + (cel.w + "×" + cel.h).padEnd(11) + " " + nota);
 }
 
 fs.rmSync(salida, { recursive: true, force: true });

@@ -103,10 +103,10 @@ export function CompareSlider({ originalSrc, processedSrc, className = "", aspec
       {/* Labels */}
       {processedSrc && (
         <>
-          <div className="absolute bottom-4 right-4 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded text-[8px] text-white font-code uppercase tracking-widest border border-white/10 z-20">
+          <div className="absolute bottom-4 right-4 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded text-[9px] text-white font-code uppercase tracking-widest border border-white/10 z-20">
             Original
           </div>
-          <div className="absolute bottom-4 left-4 bg-accent/80 backdrop-blur-md px-2 py-0.5 rounded text-[8px] text-white font-code uppercase tracking-widest border border-white/10 z-20">
+          <div className="absolute bottom-4 left-4 bg-accent/80 backdrop-blur-md px-2 py-0.5 rounded text-[9px] text-white font-code uppercase tracking-widest border border-white/10 z-20">
             {filterLabel}
           </div>
         </>

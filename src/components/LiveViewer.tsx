@@ -485,10 +485,10 @@ export const LiveViewer = forwardRef<LiveViewerHandle, Props>(function LiveViewe
               <div className="w-0.5 h-3 bg-primary/40 rounded-full" />
             </div>
           </div>
-          <div className="absolute left-3 z-10 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[8px] text-white font-code uppercase tracking-widest border border-white/10 pointer-events-none" style={{ top: rotulosTop }}>
+          <div className="absolute left-3 z-10 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[9px] text-white font-code uppercase tracking-widest border border-white/10 pointer-events-none" style={{ top: rotulosTop }}>
             {filterLabel}
           </div>
-          <div className="absolute right-3 z-10 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[8px] text-white font-code uppercase tracking-widest border border-white/10 pointer-events-none" style={{ top: rotulosTop }}>
+          <div className="absolute right-3 z-10 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[9px] text-white font-code uppercase tracking-widest border border-white/10 pointer-events-none" style={{ top: rotulosTop }}>
             Original
           </div>
         </>
