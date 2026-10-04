@@ -385,9 +385,12 @@ a la última versión:
 
 > [10.5281/zenodo.21845133](https://doi.org/10.5281/zenodo.21845133)
 
-El DOI de la versión 3.4.0 en particular es
-[10.5281/zenodo.21845134](https://doi.org/10.5281/zenodo.21845134) y el de v3.5.0
-es [10.5281/zenodo.22145677](https://doi.org/10.5281/zenodo.22145677). Los datos
+Los DOI de cada versión son: v3.4.0
+[10.5281/zenodo.21845134](https://doi.org/10.5281/zenodo.21845134), v3.5.0
+[10.5281/zenodo.22145677](https://doi.org/10.5281/zenodo.22145677) y v3.6.2
+[10.5281/zenodo.23147164](https://doi.org/10.5281/zenodo.23147164). La v3.6.2
+cubre también la 3.6.0 y la 3.6.1, que no tienen DOI propio: la 3.6.0 da las
+mismas fotos que la 3.5.0, y la 3.6.1 las mismas que la 3.6.2. Los datos
 completos de cita están en [CITATION.cff](CITATION.cff), y GitHub los ofrece ya
 formateados en el botón *Cite this repository*.
 
