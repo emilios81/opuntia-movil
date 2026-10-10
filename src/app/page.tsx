@@ -70,7 +70,7 @@ interface Selection {
 // Nombres y descripciones en inglés: los mismos que usa la versión de
 // escritorio, para que un filtro se llame igual en las dos apps.
 const FILTERS = [
-  { id: "red", name: "Rojo", nameEn: "Red", icon: "🔴", desc: "Pinturas y pigmentos rojos / ocres", descEn: "Red paints and pigments / ochres", fn: OPC.red },
+  { id: "red", name: "Rojo", nameEn: "Red", icon: "🔴", desc: "Rojos y ocres / se adapta al color de la roca", descEn: "Reds and ochres / adapts to the rock’s color", fn: OPC.red },
   { id: "white", name: "Blanco", nameEn: "White", icon: "⚪", desc: "Pinturas y pigmentos blancos / claros", descEn: "White and light paints / pigments", fn: OPC.white },
   { id: "black", name: "Negro", nameEn: "Black", icon: "⚫", desc: "Pigmentos oscuros / negros / carbones", descEn: "Dark pigments / blacks / charcoal", fn: OPC.black },
   { id: "bichrome", name: "Bicromo", nameEn: "Bichrome", icon: "◑", desc: "Combina realce rojo + blanco", descEn: "Combines red + white enhancement", fn: OPC.bichrome },
@@ -78,10 +78,10 @@ const FILTERS = [
   { id: "dslab", name: "DS-LAB", nameEn: "DS-LAB", icon: "🔵", desc: "Decorrelación perceptual CIE-LAB / pigmentos sutiles", descEn: "Perceptual CIE-LAB decorrelation / subtle pigments", fn: OPC.dslab },
   { id: "lds", name: "LDS", nameEn: "LDS", icon: "🟣", desc: "Decorrelation Stretch RGB / análisis general", descEn: "RGB Decorrelation Stretch / general analysis", fn: OPC.lds },
   { id: "petro", name: "Micro-relieve", nameEn: "Micro-relief", icon: "🪨", desc: "Pátina + textura + bordes / grabados y surcos", descEn: "Patina + texture + edges / engravings and grooves", fn: OPC.petro },
-  { id: "relief", name: "Relieve", nameEn: "Relief", icon: "🗺", desc: "Mapa de bordes multi-escala / calco digital", descEn: "Multi-scale edge map / digital tracing", fn: OPC.relief },
+  { id: "relief", name: "Relieve", nameEn: "Relief", icon: "🗺", desc: "Bordes para calcar, o relieve por escala / grabados", descEn: "Edges for tracing, or relief by scale / engravings", fn: OPC.relief },
   { id: "ybk", name: "YBK", nameEn: "YBK", icon: "🟡", desc: "Crominancia YCbCr / separación cromática", descEn: "YCbCr chrominance / chromatic separation", fn: OPC.ybk },
   { id: "clahe", name: "CLAHE", nameEn: "CLAHE", icon: "◐", desc: "Ecualización adaptativa de histograma / sombras", descEn: "Adaptive histogram equalization / shadows", fn: OPC.clahe },
-  { id: "map", name: "Mapa pigmentos", nameEn: "Pigment map", icon: "🗺️", desc: "Falso color por tipo de pigmento detectado", descEn: "False color by detected pigment type", fn: OPC.map },
+  { id: "map", name: "Mapa pigmentos", nameEn: "Pigment map", icon: "🗺️", desc: "Falso color por firma cromática / hipótesis, no identificación", descEn: "False color by chromatic signature / a hypothesis, not an identification", fn: OPC.map },
 ];
 
 const SELECTION_TOOLS: { id: Exclude<SelectionType, null>; name: string; nameEn: string; Icon: typeof Square }[] = [
@@ -289,6 +289,10 @@ export default function OpuntiaColor() {
   const [filteredImageData, setFilteredImageData] = useState<ImageData | null>(null);
   const [activeFilterId, setActiveFilterId] = useState<string | null>(null);
   const [intensity, setIntensity] = useState(1.5);
+  // Escala del Relieve en % del lado mayor (0 = mapa de bordes), como en el
+  // escritorio desde v3.7.0. En vivo el Relieve muestra siempre los bordes: la
+  // escala se aplica al capturar, con el motor de referencia.
+  const [reliefScale, setReliefScale] = useState(0);
   const [contrast, setContrast] = useState(0);
   const [saturation, setSaturation] = useState(0);
   const [isStacking, setIsStacking] = useState(false);
@@ -679,11 +683,16 @@ export default function OpuntiaColor() {
         }
 
         const mask = selection ? getMaskArray(selection) : null;
-        const currentStore = { frozen: frozenStore[filterId] || null };
-        const result = filter.fn(sourceData, int, mask, currentStore);
+        // El Relieve con escala congela estadísticas que dependen de la escala:
+        // se guardan aparte para cada una, si no al cambiarla se normalizaría
+        // con las de la anterior.
+        const opts = filterId === 'relief' ? { escala: reliefScale } : null;
+        const claveStore = filterId === 'relief' ? `relief@${reliefScale}` : filterId;
+        const currentStore = { frozen: frozenStore[claveStore] || null };
+        const result = filter.fn(sourceData, int, mask, currentStore, opts);
 
         if (currentStore.frozen) {
-          setFrozenStore((prev: any) => ({ ...prev, [filterId]: currentStore.frozen }));
+          setFrozenStore((prev: any) => ({ ...prev, [claveStore]: currentStore.frozen }));
         }
 
         // El PNG lo genera el efecto que observa filteredImageData: llamarlo
@@ -704,7 +713,7 @@ export default function OpuntiaColor() {
         setIsProcessing(false);
       }
     }, 50);
-  }, [image, imageSize, isStacking, selection, filteredImageData, frozenStore, isLiveMode]);
+  }, [image, imageSize, isStacking, selection, filteredImageData, frozenStore, isLiveMode, reliefScale]);
 
   const getMaskArray = (sel: Selection): Uint8Array => {
     const { w, h } = imageSize;
@@ -823,7 +832,7 @@ export default function OpuntiaColor() {
     if (!activeFilterId || !image || isLiveMode || isStacking || isDrawing) return;
     const timer = setTimeout(() => runFilterRef.current(activeFilterId, intensity), 250);
     return () => clearTimeout(timer);
-  }, [intensity, selection, isDrawing, image, isLiveMode, isStacking]);
+  }, [intensity, reliefScale, selection, isDrawing, image, isLiveMode, isStacking]);
 
   // Un resultado nuevo del filtro se muestra enseguida; contraste y saturación
   // esperan a que el deslizador se aquiete un poco, si no cada paso dispararía
@@ -993,14 +1002,16 @@ export default function OpuntiaColor() {
                 {lang === 'es' ? (<>
                   <p>· <strong>Resolución completa</strong> — Las fotos se procesan a su tamaño real, como en el escritorio, hasta {TOPE_CELULAR} px de lado: más no entra en la memoria de un celular. Con 2000 px va más rápido y se reproduce el resultado de v3.6.0, que achicaba toda foto a ese tamaño.</p>
                   <p>· <strong>En vivo</strong> — Los doce filtros sobre la cámara, calculados en la GPU a la resolución que entregue (Full HD o 4K), con reducción de ruido, zoom, comparación con el original y pantalla completa, donde Ajustes da intensidad, contraste y saturación. Capturar pasa el cuadro al motor de referencia.</p>
-                  <p>· <strong>Algoritmos precisos</strong> — Alineación científica con la referencia de escritorio v3.6.0: a la misma resolución, la salida de las fotos coincide byte a byte.</p>
-                  <p>· <strong>Estadísticas por zona</strong> — Con una zona marcada, la decorrelación (CRGB, DS-LAB, LDS, YBK) se calcula con los datos de esa zona: mejor separación de pigmentos locales, como en DStretch.</p>
+                  <p>· <strong>Rojo adaptativo y Relieve con escala (v3.7.0)</strong> — El Rojo calcula el color de la roca en cada foto (o zona), lo lleva a gris y amplifica lo que se aparta de él: <strong>cambian sus resultados</strong>. El Relieve suma un control de escala para grabados; en Bordes es el de siempre. El Mapa de pigmentos aclara que es una hipótesis, no una identificación.</p>
+                  <p>· <strong>Algoritmos precisos</strong> — Alineación científica con la referencia de escritorio v3.7.0: a la misma resolución, la salida de las fotos coincide byte a byte.</p>
+                  <p>· <strong>Estadísticas por zona</strong> — Con una zona marcada, la decorrelación (CRGB, DS-LAB, LDS, YBK) y el Rojo se calculan con los datos de esa zona: mejor separación de pigmentos locales, como en DStretch.</p>
                   <p>· <strong>Modo PWA</strong> — Funcionamiento 100% offline tras la instalación.</p>
                 </>) : (<>
                   <p>· <strong>Full resolution</strong> — Photos are processed at their real size, as in the desktop version, up to {TOPE_CELULAR} px per side: more than that does not fit in a phone’s memory. 2000 px is faster and reproduces the results of v3.6.0, which scaled every photo down to that size.</p>
                   <p>· <strong>Live</strong> — The twelve filters on the camera feed, computed on the GPU at whatever resolution the camera delivers (Full HD or 4K), with noise reduction, zoom, comparison with the original and full screen, where Adjust gives intensity, contrast and saturation. Capture sends the frame to the reference engine.</p>
-                  <p>· <strong>Precise algorithms</strong> — Scientific alignment with the desktop reference v3.6.0: at the same resolution, photo output matches byte for byte.</p>
-                  <p>· <strong>Per-area statistics</strong> — With an area selected, the decorrelation (CRGB, DS-LAB, LDS, YBK) is computed from that area’s data: better separation of local pigments, as in DStretch.</p>
+                  <p>· <strong>Adaptive Red and Relief with a scale (v3.7.0)</strong> — Red works out the rock’s color in each photo (or area), takes it to gray and amplifies whatever departs from it: <strong>its results change</strong>. Relief gains a scale control for engravings; on Edges it is the usual map. The Pigment map now says it is a hypothesis, not an identification.</p>
+                  <p>· <strong>Precise algorithms</strong> — Scientific alignment with the desktop reference v3.7.0: at the same resolution, photo output matches byte for byte.</p>
+                  <p>· <strong>Per-area statistics</strong> — With an area selected, the decorrelation (CRGB, DS-LAB, LDS, YBK) and Red are computed from that area’s data: better separation of local pigments, as in DStretch.</p>
                   <p>· <strong>PWA mode</strong> — Works 100% offline once installed.</p>
                 </>)}
                 {/* Aviso legal de la GPL: la licencia pide que una interfaz
@@ -1024,7 +1035,7 @@ export default function OpuntiaColor() {
           {processedSrc && !isLiveMode && (
             <Button size="sm" className="bg-accent hover:bg-accent/90 text-accent-foreground border-none h-8 px-2.5 sm:px-3" onClick={() => {
               const procesada = imagenParaReporte();
-              if (procesada) generateReport(imageSrc!, procesada, metadata!, nombreFiltro(activeFilterId), intensity, imageSize.w, imageSize.h);
+              if (procesada) generateReport(imageSrc!, procesada, metadata!, nombreFiltro(activeFilterId), intensity, imageSize.w, imageSize.h, activeFilterId === 'relief' ? reliefScale : 0);
             }}>
               {/* En el celular dice PDF: "Reporte" no entraba junto a los otros botones. */}
               <FileText className="w-3 h-3 mr-1.5 sm:mr-2" /><span className="sm:hidden">PDF</span><span className="hidden sm:inline">{tr("Reporte", "Report")}</span>
@@ -1329,7 +1340,11 @@ export default function OpuntiaColor() {
                           <Button size="sm" variant="ghost" className="h-7 text-[10px] hover:bg-accent/10" onClick={() => {
                             const link = document.createElement('a');
                             link.href = processedSrc || "";
-                            link.download = `${fileName.split('.')[0]}_OPC_${activeFilterId}.png`;
+                            // Nombre reproducible, como en el escritorio: filtro,
+                            // intensidad, escala del Relieve y ajustes post.
+                            const esc = activeFilterId === 'relief' && reliefScale ? `_e${reliefScale}` : '';
+                            const post = `${contrast !== 0 ? `_c${contrast}` : ''}${saturation !== 0 ? `_s${saturation}` : ''}`;
+                            link.download = `${fileName.split('.')[0]}_OPC_${activeFilterId}_i${intensity.toFixed(1)}${esc}${post}.png`;
                             link.click();
                           }}><Download className="w-3 h-3 mr-1" /> {tr("Descargar", "Download")}</Button>
                         </>
@@ -1670,6 +1685,35 @@ export default function OpuntiaColor() {
                       ))}
                     </div>
                   </div>
+                  {activeFilterId === 'relief' && (
+                    <div className="pt-3 border-t border-border space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">{tr("Escala", "Scale")}</label>
+                        <span className="text-[10px] font-code font-bold bg-accent/10 text-accent px-2 py-0.5 rounded border border-accent/20">{reliefScale ? `${reliefScale}%` : tr("bordes", "edges")}</span>
+                      </div>
+                      <div className="flex gap-1 justify-between">
+                        {OPC.RELIEF_ESCALAS.map(e => (
+                          <button key={e} onClick={() => setReliefScale(e)} className={cn("flex-1 text-[10px] px-1 py-1 rounded-md border font-bold transition-all", reliefScale === e ? "bg-accent border-accent text-accent-foreground shadow-sm" : "bg-card border-border text-muted-foreground hover:bg-muted")}>{e ? e : tr("Bordes", "Edges")}</button>
+                        ))}
+                      </div>
+                      <p className={cn(AYUDA, "text-muted-foreground")}>
+                        {isLiveMode
+                          ? tr("En vivo el Relieve muestra los bordes. La escala elegida se aplica al capturar el cuadro.",
+                               "Live, Relief shows the edges. The chosen scale is applied when you capture the frame.")
+                          : reliefScale
+                          ? tr(`Borra lo que mide menos de ~${Math.max(2, Math.round(Math.max(imageSize.w, imageSize.h) * reliefScale / 100))} px (${reliefScale}% del lado mayor) y resta el fondo: se van el grano y la iluminación despareja. Si el motivo se empasta, bajá la escala.`,
+                               `Erases what measures less than ~${Math.max(2, Math.round(Math.max(imageSize.w, imageSize.h) * reliefScale / 100))} px (${reliefScale}% of the long side) and subtracts the background: grain and uneven lighting drop out. If the motif blurs, lower the scale.`)
+                          : tr("Mapa de bordes: todo detalle por igual, para calcar. Para grabados, probá una escala.",
+                               "Edge map: every detail alike, for tracing. For engravings, try a scale.")}
+                      </p>
+                    </div>
+                  )}
+                  {activeFilterId === 'map' && (
+                    <p className={cn(AYUDA, "text-muted-foreground pt-3 border-t border-border")}>
+                      {tr("Clasifica por color, no por composición: el ocre y las manchas de óxido de hierro de la roca caen en la misma zona, y una foto RGB no puede separarlos. Usalo como hipótesis y miralo contra un control: si una zona de roca sin pintura también sale roja, ese rojo no distingue pigmento de soporte.",
+                          "It classifies by color, not by composition: ochre and the rock’s iron-oxide staining fall in the same region, and an RGB photo cannot separate them. Use it as a hypothesis and check it against a control: if an unpainted area of rock also comes out red, that red does not tell pigment from substrate.")}
+                    </p>
+                  )}
                   <div className="pt-3 border-t border-border space-y-4">
                     <div className="space-y-3">
                       <div className="flex justify-between items-center">

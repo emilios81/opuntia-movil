@@ -702,6 +702,11 @@ export class LiveEngine {
           this.f1('uGain', u.gain);
           this.f1('uOffset', u.offset);
           break;
+        case 'red':
+          this.f1('uMA', u.ma); this.f1('uMB', u.mb);
+          this.f1('uCo', u.co); this.f1('uSi', u.si);
+          this.f1('uW1', u.w1); this.f1('uW2', u.w2);
+          break;
         case 'ybk':
           this.f1('uMY', u.mY); this.f1('uMCb', u.mCb); this.f1('uMCr', u.mCr);
           this.f1('uStdCb', u.stdCb); this.f1('uStdCr', u.stdCr);

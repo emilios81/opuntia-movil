@@ -83,26 +83,42 @@ function extraer(nombre) {
 
 const NUCLEO = ["rgb2lab", "lab2rgb", "rgb2ycbcr", "ycbcr2rgb",
                 "meanCov3", "meanStd1", "jacobiEigen3", "tukeyFences",
-                "crgbEnhance", "dsLabEnhance", "ldsEnhance", "ybkEnhance"];
+                "crgbEnhance", "dsLabEnhance", "ldsEnhance", "ybkEnhance",
+                "enhanceRedPigment", "reliefMap", "reliefEscala", "boxBlur", "quitarTendencia",
+                "enhanceWhitePigment", "enhanceBlackPigment", "enhanceBichrome", "enhancePetroglyph",
+                "buildSAT", "satMean", "claheEnhance", "pigmentMapping"];
 
 const caja = {
   Math, Float64Array, Float32Array, Int32Array, Uint8ClampedArray, Uint8Array,
   Array, Number, Object, Infinity, console, ImageData,
 };
 vm.createContext(caja);
-const CONSTANTES = ["LDS_TUKEY_K"].map(n => {
+const CONSTANTES = ["LDS_TUKEY_K", "RED_SIGMA", "RED_PISO", "RED_ENFASIS", "RELIEF_FONDO"].map(n => {
   const m = fuente.match(new RegExp("^const " + n + " = .+;$", "m"));
   if (!m) throw new Error("no se encontró la constante " + n + " en el fuente del escritorio");
   return m[0];
 }).join("\n");
 vm.runInContext(CONSTANTES + "\n" + NUCLEO.map(extraer).join("\n"), caja);
 
-// Qué filtro de la móvil se compara contra qué función del escritorio.
+// Qué filtro de la móvil se compara contra qué función del escritorio. El
+// cuarto elemento son los parámetros propios del filtro (la escala del
+// Relieve), que las dos reciben en el mismo lugar. Rojo y Relieve entraron en
+// v3.7.0: hasta entonces no se comparaban.
 const PARES = [
   ["LDS",     movil.lds,   caja.ldsEnhance],
   ["CRGB",    movil.crgb,  caja.crgbEnhance],
   ["DS-LAB",  movil.dslab, caja.dsLabEnhance],
   ["YBK",     movil.ybk,   caja.ybkEnhance],
+  ["Rojo",    movil.red,   caja.enhanceRedPigment],
+  ["Relieve (bordes)",     movil.relief, caja.reliefMap],
+  ["Relieve escala 0.25%", movil.relief, caja.reliefMap, { escala: 0.25 }],
+  ["Relieve escala 1%",    movil.relief, caja.reliefMap, { escala: 1 }],
+  ["Blanco",  movil.white,    caja.enhanceWhitePigment],
+  ["Negro",   movil.black,    caja.enhanceBlackPigment],
+  ["Bicromo", movil.bichrome, caja.enhanceBichrome],
+  ["Micro-relieve", movil.petro, caja.enhancePetroglyph],
+  ["CLAHE",   movil.clahe,    caja.claheEnhance],
+  ["Mapa de pigmentos", movil.map, caja.pigmentMapping],
 ];
 
 // -------------------------------------------------- imágenes sintéticas
@@ -152,6 +168,14 @@ const CASOS = [
     }) },
   { nombre: "ruido a pleno rango", img: generar(64, 64, () => [rnd() * 255, rnd() * 255, rnd() * 255]) },
   { nombre: "imagen plana (varianza cero)", img: generar(40, 40, () => [128, 100, 80]), degenerado: true },
+  // En las imágenes chicas las escalas del Relieve caen todas en radio 1: este
+  // panel de 800 px las separa (0.25 % → radio 1, 1 % → radio 4, fondo 64) e
+  // incluye un gradiente de luz, que es lo que la tendencia cuadrática resta.
+  { nombre: "panel grande con gradiente de luz", soloRelieve: true, img: generar(800, 600, (x, y) => {
+      const base = 100 + 25 * Math.sin(x / 23) * Math.cos(y / 31) + 40 * x / 800;
+      const surco = Math.abs(((x - 400) * (x - 400)) / 9000 + (y - 300) / 3 - 20) < 6 ? -12 : 0;
+      return [base * 1.1 + surco + rnd() * 6, base * 0.95 + surco + rnd() * 6, base * 0.8 + surco + rnd() * 6];
+    }) },
 ];
 
 const INTENSIDADES = [0.5, 1.0, 1.5, 2.0, 3.0];
@@ -163,15 +187,16 @@ const regresiones = [], degeneradas = [];
 console.log("\n\x1b[1mOPC móvil contra escritorio — salida byte a byte\x1b[0m");
 console.log("escritorio: " + ESCRITORIO + "\n");
 
-for (const [filtro, fnMovil, fnEscritorio] of PARES) {
+for (const [filtro, fnMovil, fnEscritorio, opts] of PARES) {
   console.log("\x1b[1m" + filtro + "\x1b[0m");
   for (const caso of CASOS) {
+    if (caso.soloRelieve && fnMovil !== movil.relief) continue;
     for (const I of INTENSIDADES) {
       corridas++;
       const base = caso.img;
       const copia = () => new ImageData(new Uint8ClampedArray(base.data), base.width, base.height);
-      const a = fnEscritorio(copia(), I, null, null).data;
-      const b = fnMovil(copia(), I, null, {}).data;
+      const a = fnEscritorio(copia(), I, null, null, opts).data;
+      const b = fnMovil(copia(), I, null, {}, opts).data;
 
       let distintos = 0, maxDif = 0, primero = -1;
       for (let i = 0; i < a.length; i++) {

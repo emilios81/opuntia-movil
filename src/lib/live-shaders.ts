@@ -29,6 +29,8 @@
  * el pase final a pantalla da vuelta el eje.
  */
 
+import { RED_ENFASIS } from './image-processing';
+
 // Triángulo que cubre todo el destino, sin buffers: los vértices salen del índice.
 export const VERT = `#version 300 es
 void main() {
@@ -87,8 +89,9 @@ vec3 rgb2lab(vec3 c) {
   vec3 lab = vec3(116.0 * fy - 16.0, 500.0 * (labF(x) - fy), 200.0 * (fy - labF(z)));
   // En un gris exacto (R = G = B) a* y b* son cero salvo por redondeo. En doble
   // precisión el motor obtiene siempre a* ≈ −1e-5; en simple el signo sale al
-  // azar, y Rojo elige rama por el signo de a*: un blanco quemado salía hasta
-  // 38 niveles más claro que en el motor. En cero se toma la misma rama.
+  // azar. El Rojo de v3.6 elegía rama por ese signo y un blanco quemado salía
+  // hasta 38 niveles más claro que en el motor; se deja en cero, que es el
+  // valor que corresponde.
   if (c.r == c.g && c.g == c.b) lab.yz = vec2(0.0);
   return lab;
 }
@@ -132,14 +135,23 @@ void main() {
 
 // --- FILTROS DE UN SOLO PASE ------------------------------------------------
 
+// Rojo adaptativo (v3.7.0): la media y los ejes del plano a*-b* llegan de la
+// muestra del cuadro (live-stats.ts), con los pesos de la intensidad ya hechos.
 const RED = filtro(`
+uniform float uMA;
+uniform float uMB;
+uniform float uCo;
+uniform float uSi;
+uniform float uW1;
+uniform float uW2;
 vec3 filtro(vec3 c, ivec2 p) {
   vec3 lab = rgb2lab(c);
-  float L = lab.x, a = lab.y, b = lab.z;
-  float a_ = clamp(a * uI, -128.0, 127.0);
-  float b_ = clamp(b * (1.0 + (uI - 1.0) * 0.3), -128.0, 127.0);
-  float L_ = clamp(L + (a > 0.0 ? (uI - 1.0) * 8.0 : -(uI - 1.0) * 5.0), 0.0, 100.0);
-  return clamp(lab2rgb(L_, a_, b_), 0.0, 255.0);
+  float da = lab.y - uMA, db = lab.z - uMB;
+  float p1 = (uCo * da + uSi * db) * uW1, p2 = (uCo * db - uSi * da) * uW2;
+  float a = uCo * p1 - uSi * p2;
+  float b = uSi * p1 + uCo * p2;
+  if (a > 0.0) a *= ${RED_ENFASIS.toFixed(4)};
+  return clamp(lab2rgb(lab.x, clamp(a, -128.0, 127.0), clamp(b, -128.0, 127.0)), 0.0, 255.0);
 }`);
 
 const L_STATS = `
@@ -187,7 +199,7 @@ vec3 filtro(vec3 c, ivec2 p) {
   float nL = clamp(Li + wb, 0.0, 100.0);
   bool isR = !isW && ai < 5.0 && Li < uML;
   float rs = isR ? 0.7 : 1.0;
-  return clamp(lab2rgb(nL * rs + (1.0 - rs) * (nL * 0.6), ai * rb, bi * (isW ? 0.5 : 1.0)), 0.0, 255.0);
+  return clamp(lab2rgb(nL * rs + (1.0 - rs) * (nL * 0.6), clamp(ai * rb, -128.0, 127.0), clamp(bi * (isW ? 0.5 : 1.0), -128.0, 127.0)), 0.0, 255.0);
 }`);
 
 const MAP = filtro(L_STATS + `
@@ -385,7 +397,8 @@ void main() {
   float mS = caja(uBoxS, uFS, p), mLg = caja(uBoxL, uFL, p);
   float Lloc = L + (L - mS) * uI * 2.5 * 0.6 + (L - mLg) * uI * 1.2 * 0.4;
   float nL = clamp(Lloc + (sobelL(p) / (maxEdge != 0.0 ? maxEdge : 1.0)) * 20.0 * (uI * 0.25), 0.0, 100.0);
-  vec3 r = clamp(lab2rgb(nL, midA + (lab.y - midA) * uI * 3.0, midB + (lab.z - midB) * uI * 3.0), 0.0, 255.0);
+  float cb = uI * 3.0;
+  vec3 r = clamp(lab2rgb(nL, clamp(midA + (lab.y - midA) * cb, -128.0, 127.0), clamp(midB + (lab.z - midB) * cb, -128.0, 127.0)), 0.0, 255.0);
   o = vec4(post(r) / 255.0, 1.0);
 }`;
 

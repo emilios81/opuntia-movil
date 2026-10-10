@@ -1,4 +1,4 @@
-# OpuntiaColor v3.6.2 — versión móvil
+# OpuntiaColor v3.7.0 — versión móvil
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21845133.svg)](https://doi.org/10.5281/zenodo.21845133)
 [![Licencia: GPL v3+](https://img.shields.io/badge/licencia-GPL--3.0--or--later-blue.svg)](LICENSE)
@@ -46,10 +46,10 @@ Aun sin instalarla, la app funciona abriéndola en el navegador.
 
 ## Características
 
-- **Doce filtros alineados con la referencia v3.6.0** — Rojo, Blanco, Negro,
+- **Doce filtros alineados con la referencia v3.7.0** — Rojo, Blanco, Negro,
   Bicromo, CRGB, DS-LAB, LDS, Micro-relieve, Relieve, YBK, CLAHE y Mapa de
   pigmentos. La salida coincide píxel a píxel con la versión de escritorio, y hay
-  una prueba que lo comprueba: `npm run verificar`.
+  una prueba que lo comprueba en los doce: `npm run verificar`.
 - **Fotos a resolución completa** — se procesan a su tamaño real, como en el
   escritorio, hasta 4096 px de lado, que es lo que aguanta la memoria de un
   celular. Con 2000 px va más rápido.
@@ -67,8 +67,8 @@ Aun sin instalarla, la app funciona abriéndola en el navegador.
   reporte.
 - **Selección de zona** — rectángulo, círculo o mano alzada sobre la imagen. El
   filtro se aplica solo ahí y, en los filtros de decorrelación (CRGB, DS-LAB,
-  LDS, YBK), las estadísticas se calculan con los datos de esa zona: mejor
-  separación de pigmentos locales, como en DStretch.
+  LDS, YBK) y en el Rojo, las estadísticas se calculan con los datos de esa
+  zona: mejor separación de pigmentos locales, como en DStretch.
 - **Acumular filtros** — cada filtro se aplica sobre el resultado del anterior
   en vez de partir siempre de la imagen original.
 - **Sin conexión** — tras la primera visita la app queda completa en el
@@ -81,6 +81,50 @@ Aun sin instalarla, la app funciona abriéndola en el navegador.
 - **Reportes PDF** con esos mismos metadatos y las dos imágenes.
 - **Español e inglés** — la interfaz completa en los dos idiomas, con un botón
   en la cabecera.
+
+## v3.7.0 — Rojo adaptativo, Relieve con escala y los doce filtros verificados
+
+**Cambian los resultados del Rojo, y los del Bicromo y el Micro-relieve en los
+colores muy saturados.** Los tres cambios de filtros son los de la versión de
+escritorio 3.7.0, que salieron de la correspondencia con B. Gunn; acá se portan
+con la misma aritmética y la salida coincide byte a byte.
+
+- **Rojo adaptativo — cambia sus resultados.** Hasta ahora multiplicaba el rojo
+  de cada píxel por un número fijo, y en una roca rojiza enrojecía roca y
+  pigmento por igual. Ahora calcula el color de la roca con la propia foto (o
+  con la zona marcada), lo lleva a gris y amplifica lo que se aparta de él, con
+  prioridad para lo más rojo que la roca. L* no se toca. En vivo hace lo mismo
+  con las estadísticas de la muestra del cuadro, como los demás filtros
+  adaptativos.
+- **Relieve con escala.** Con el Relieve elegido aparece un control de escala.
+  En **Bordes** es el mapa de siempre, idéntico. Las demás opciones (0.1 a 1 %
+  del lado mayor) borran todo lo más chico que la escala y restan el fondo
+  —iluminación despareja, pendiente general de la roca—: lo picoteado se lee
+  como más claro o más oscuro que su entorno. **En vivo el Relieve sigue
+  mostrando los bordes; la escala se aplica al capturar el cuadro**, que pasa al
+  motor de referencia.
+- **Mapa de pigmentos: hipótesis, no identificación.** La descripción lo dice, y
+  con el mapa elegido aparece cómo controlarlo con una zona sin pintura. No
+  cambia resultados.
+- **Bicromo y Micro-relieve, alineados con el escritorio — cambian sus
+  resultados en los colores muy saturados.** No acotaban a* y b* a ±128 antes de
+  volver a RGB, y el Micro-relieve trabajaba en precisión simple: con una
+  tarjeta de color en el encuadre se apartaban del escritorio hasta 100 niveles,
+  y en el resto de la foto algún píxel suelto por uno. Nadie lo había visto
+  porque `npm run verificar` comparaba solo los cuatro filtros de decorrelación.
+  En vivo se corrigió lo mismo.
+- **`npm run verificar` compara los doce filtros**, el Relieve también con
+  escala y sobre un panel grande con gradiente de luz: 407 comparaciones,
+  idénticas byte a byte. Las únicas distintas son las de una imagen totalmente
+  plana en Blanco y Negro, una entrada degenerada que la prueba informa pero no
+  cuenta. `npm run verificar-gpu`: 224 comparaciones dentro de tolerancia.
+- **El nombre del archivo descargado registra los parámetros**, como en el
+  escritorio: filtro, intensidad, escala del Relieve y ajustes
+  (`IMG_0421_OPC_relief_i1.5_e0.25_c10.png`). Hasta ahora llevaba solo el
+  filtro. El reporte PDF agrega la escala.
+
+Para reproducir una imagen hecha con el Rojo, el Bicromo o el Micro-relieve de
+v3.6.2, hay que usar esa versión (DOI 10.5281/zenodo.23147164).
 
 ## v3.6.2 — Interfaz en inglés y logo original
 

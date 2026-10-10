@@ -1,6 +1,6 @@
 {
   "name": "opuntiacolor-movil",
-  "version": "3.6.2",
+  "version": "3.7.0",
   "private": true,
   "description": "PWA de campo para realce de arte rupestre: doce filtros de decorrelación que corren enteros en el navegador, sin conexión.",
   "license": "GPL-3.0-or-later",

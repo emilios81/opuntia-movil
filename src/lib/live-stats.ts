@@ -31,7 +31,7 @@
  *    lo necesita: reproyecta al RGB y el signo se cancela.
  */
 
-import { meanCov3, meanStd1, jacobiEigen3, tukeyFences, rgb2lab } from './image-processing';
+import { meanCov3, meanStd1, jacobiEigen3, tukeyFences, rgb2lab, rojoMomentos, rojoEjes, RED_SIGMA, type RojoMomentos } from './image-processing';
 
 // Muestra de la imagen: RGBA de 8 bits, un píxel cada `stride` en cada eje.
 // El píxel (i, j) de la muestra es el (i·stride + stride/2, j·stride + stride/2)
@@ -51,12 +51,13 @@ export type FilterUniforms =
   | { kind: 'pca'; m: number[]; V: number[][]; s: number[]; lo: number[]; hi: number[] }
   | { kind: 'lds'; m: number[]; V: number[][]; w: number[]; gain: number; offset: number }
   | { kind: 'ybk'; mY: number; mCb: number; mCr: number; stdCb: number; stdCr: number }
+  | { kind: 'red'; ma: number; mb: number; co: number; si: number; w1: number; w2: number }
   | { kind: 'clahe'; lut: Float32Array; nx: number; ny: number; tw: number; th: number; version: number };
 
-// Filtros que necesitan estadísticas calculadas en la CPU. Rojo no usa
-// ninguna; Relieve y Micro-relieve solo usan máximos y mínimos, que se
-// reducen en la GPU.
-export const CPU_STATS_FILTERS = new Set(['white', 'black', 'bichrome', 'map', 'crgb', 'dslab', 'lds', 'ybk', 'clahe']);
+// Filtros que necesitan estadísticas calculadas en la CPU. Desde v3.7.0
+// también el Rojo, que es adaptativo (media y covarianza de a*, b*). Relieve y
+// Micro-relieve solo usan máximos y mínimos, que se reducen en la GPU.
+export const CPU_STATS_FILTERS = new Set(['red', 'white', 'black', 'bichrome', 'map', 'crgb', 'dslab', 'lds', 'ybk', 'clahe']);
 
 const LDS_TUKEY_K = 3; // el mismo valor que el motor (ver lds() en image-processing.ts)
 
@@ -152,6 +153,7 @@ type Raw =
   | { kind: 'rgb'; mom: Moments }
   | { kind: 'lab'; mom: Moments }
   | { kind: 'L'; L: MeanVar }
+  | { kind: 'ab'; mom: RojoMomentos }
   | { kind: 'ycc'; Y: MeanVar; Cb: MeanVar; Cr: MeanVar }
   | { kind: 'clahe'; frac: Float64Array; counts: Float64Array; nx: number; ny: number; tw: number; th: number; fullW: number; fullH: number };
 
@@ -171,6 +173,10 @@ function rawFor(filter: string, ch: SampleChannels): Raw | null {
     case 'dslab': {
       const [L, A, B] = ch.lab();
       return { kind: 'lab', mom: meanCov3(L, A, B, null) };
+    }
+    case 'red': {
+      const [, A, B] = ch.lab();
+      return { kind: 'ab', mom: rojoMomentos(A, B, null) };
     }
     case 'white':
     case 'black':
@@ -241,6 +247,10 @@ function mixRaw(a: Raw, b: Raw, t: number): Raw {
       return { kind: a.kind, mom: mixMoments(a.mom, (b as typeof a).mom, t) };
     case 'L':
       return { kind: 'L', L: mixMV(a.L, (b as typeof a).L, t) };
+    case 'ab': {
+      const m = a.mom, n = (b as typeof a).mom;
+      return { kind: 'ab', mom: { ma: mixNum(m.ma, n.ma, t), mb: mixNum(m.mb, n.mb, t), saa: mixNum(m.saa, n.saa, t), sab: mixNum(m.sab, n.sab, t), sbb: mixNum(m.sbb, n.sbb, t) } };
+    }
     case 'ycc': {
       const bb = b as typeof a;
       return { kind: 'ycc', Y: mixMV(a.Y, bb.Y, t), Cb: mixMV(a.Cb, bb.Cb, t), Cr: mixMV(a.Cr, bb.Cr, t) };
@@ -341,6 +351,14 @@ export class LiveStats {
     switch (raw.kind) {
       case 'L':
         return { kind: 'L', mL: raw.L.mean, stdL: Math.sqrt(raw.L.v) || 1 };
+
+      // red() del motor: ejes de la covarianza promediada y pesos de la intensidad
+      case 'ab': {
+        const { ma, mb, saa, sab, sbb } = raw.mom;
+        const st = rojoEjes(ma, mb, saa, sab, sbb);
+        const objetivo = RED_SIGMA * I;
+        return { kind: 'red', ma: st.ma, mb: st.mb, co: st.co, si: st.si, w1: objetivo / st.s1, w2: objetivo / st.s2 };
+      }
 
       case 'ycc':
         return {

@@ -9,7 +9,8 @@ export async function generateReport(
   filterName: string,
   intensity: number,
   imageWidth: number,
-  imageHeight: number
+  imageHeight: number,
+  scale = 0
 ) {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -50,7 +51,7 @@ export async function generateReport(
   doc.setFont(serifFont, 'bold');
   doc.text('Enhancement Settings', pageWidth / 2, metaY + 35, { align: 'center' });
   doc.setFont(serifFont, 'normal');
-  doc.text(`Filter: ${filterName} | Intensity: ${intensity.toFixed(1)}x`, pageWidth / 2, metaY + 42, { align: 'center' });
+  doc.text(`Filter: ${filterName} | Intensity: ${intensity.toFixed(1)}x${scale > 0 ? ` | Scale: ${scale}%` : ''}`, pageWidth / 2, metaY + 42, { align: 'center' });
 
   // Images - Scaling calculation
   const aspectRatio = imageWidth / imageHeight;

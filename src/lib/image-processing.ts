@@ -1,6 +1,6 @@
 
 /**
- * CORE IMAGE PROCESSING LOGIC - OPUNTIA COLOR v3.5.0
+ * CORE IMAGE PROCESSING LOGIC - OPUNTIA COLOR v3.7.0
  * Implementation strictly aligned with scientific reference standards.
  */
 
@@ -66,7 +66,7 @@ export function meanStd1(arr: Canal, mask: Uint8Array | null) {
 // un histograma de 4096 bins en una sola pasada: no hace falta ordenar la imagen.
 // A diferencia del mínimo y el máximo absolutos, no se mueven porque en el
 // encuadre entre una tarjeta de color, una mano o un brillo especular.
-export function tukeyFences(arr: Float64Array, mask: Uint8Array | null, k: number) {
+export function tukeyFences(arr: Canal, mask: Uint8Array | null, k: number) {
   const n = arr.length;
   let mn = Infinity, mx = -Infinity, cnt = 0;
   for (let i = 0; i < n; i++) { if (mask && !mask[i]) continue; const v = arr[i]; if (v < mn) mn = v; if (v > mx) mx = v; cnt++; }
@@ -130,7 +130,7 @@ export function jacobiEigen3(cov: number[][]) {
   };
 }
 
-export function buildSAT(data: Float32Array, w: number, h: number): Float64Array {
+export function buildSAT(data: Canal, w: number, h: number): Float64Array {
   const sat = new Float64Array(w * h);
   for (let y = 0; y < h; y++) {
     let rowSum = 0;
@@ -177,18 +177,82 @@ export function lab2rgb(L: number, a: number, b: number): [number, number, numbe
   return [Math.round(g(rr) * 255), Math.round(g(gg) * 255), Math.round(g(bb) * 255)];
 }
 
-// --- FILTROS v3.5.0 ---
+// --- FILTROS ---
 
-export function red(imageData: ImageData, I: number, mask: Uint8Array | null) {
+// Rojo adaptativo (v3.7.0), el mismo de enhanceRedPigment del escritorio.
+//
+// Hasta v3.6.x era una transformación fija en CIE-LAB (a* por la intensidad),
+// que en una roca rojiza enrojecía roca y pigmento por igual. Ahora es una
+// decorrelación en el plano a*-b* calculada con los colores de la foto o de la
+// zona: media y covarianza 2×2 sin los píxeles fuera de las vallas de Tukey de
+// cada eje, los dos ejes principales llevados a una dispersión común de
+// RED_SIGMA · intensidad, y lo que se aparta hacia +a* estirado RED_ENFASIS
+// veces más. L* no se toca. El desvío de cada eje tiene un piso de RED_PISO
+// para no amplificar el ruido de compresión de una roca casi gris.
+export const RED_SIGMA = 10;
+export const RED_PISO = 1.5;
+export const RED_ENFASIS = 1.5;
+
+export interface RojoStats { ma: number; mb: number; co: number; si: number; s1: number; s2: number }
+export interface RojoMomentos { ma: number; mb: number; saa: number; sab: number; sbb: number }
+
+// Estadísticas del Rojo sobre los canales a* y b*. El modo en vivo usa los
+// momentos por separado: los promedia en el tiempo antes de sacar los ejes.
+export function rojoStats(A: Float64Array, B: Float64Array, mask: Uint8Array | null): RojoStats {
+  const m = rojoMomentos(A, B, mask);
+  return rojoEjes(m.ma, m.mb, m.saa, m.sab, m.sbb);
+}
+
+export function rojoMomentos(A: Float64Array, B: Float64Array, mask: Uint8Array | null): RojoMomentos {
+  const n = A.length;
+  // Máscara vacía → toda la imagen, igual que meanCov3
+  if (mask) { let alguno = false; for (let i = 0; i < n; i++) if (mask[i]) { alguno = true; break; } if (!alguno) mask = null; }
+  const fa = tukeyFences(A, mask, 3), fb = tukeyFences(B, mask, 3);
+  const vale = (i: number) => (!mask || mask[i]) && A[i] >= fa.lo && A[i] <= fa.hi && B[i] >= fb.lo && B[i] <= fb.hi;
+  let ma = 0, mb = 0, cnt = 0;
+  for (let i = 0; i < n; i++) { if (!vale(i)) continue; ma += A[i]; mb += B[i]; cnt++; }
+  ma /= cnt; mb /= cnt;
+  let saa = 0, sab = 0, sbb = 0;
+  for (let i = 0; i < n; i++) {
+    if (!vale(i)) continue;
+    const da = A[i] - ma, db = B[i] - mb;
+    saa += da*da; sab += da*db; sbb += db*db;
+  }
+  saa /= cnt; sab /= cnt; sbb /= cnt;
+  return { ma, mb, saa, sab, sbb };
+}
+
+// Ejes principales de una covarianza 2×2, en forma cerrada, con el piso.
+export function rojoEjes(ma: number, mb: number, saa: number, sab: number, sbb: number): RojoStats {
+  const th = 0.5 * Math.atan2(2*sab, saa - sbb);
+  const medio = (saa + sbb) / 2, radio = Math.sqrt(((saa - sbb) / 2) ** 2 + sab*sab);
+  return {
+    ma, mb, co: Math.cos(th), si: Math.sin(th),
+    s1: Math.max(RED_PISO, Math.sqrt(Math.max(0, medio + radio))),
+    s2: Math.max(RED_PISO, Math.sqrt(Math.max(0, medio - radio))),
+  };
+}
+
+export function red(imageData: ImageData, I: number, mask: Uint8Array | null, store?: any) {
   const data = imageData.data, n = data.length / 4, out = new Uint8ClampedArray(data.length);
+  const L = new Float64Array(n), A = new Float64Array(n), B = new Float64Array(n);
+  for (let i = 0; i < n; i++) [L[i], A[i], B[i]] = rgb2lab(data[i*4], data[i*4+1], data[i*4+2]);
+  let st: RojoStats = store && store.frozen;
+  if (!st) {
+    st = rojoStats(A, B, mask);
+    if (store) store.frozen = st;
+  }
+  const { ma, mb, co, si } = st;
+  const objetivo = RED_SIGMA * I, w1 = objetivo / st.s1, w2 = objetivo / st.s2;
   for (let i = 0; i < n; i++) {
     if (mask && !mask[i]) { out.set(data.slice(i * 4, i * 4 + 4), i * 4); continue; }
-    let [L, a, b] = rgb2lab(data[i*4], data[i*4+1], data[i*4+2]);
-    const a_ = Math.max(-128, Math.min(127, a * I));
-    const b_ = Math.max(-128, Math.min(127, b * (1 + (I - 1) * 0.3)));
-    const L_ = Math.max(0, Math.min(100, L + (a > 0 ? (I - 1) * 8 : -(I - 1) * 5)));
-    const [r, g, b_val] = lab2rgb(L_, a_, b_);
-    out[i*4] = r; out[i*4+1] = g; out[i*4+2] = b_val; out[i*4+3] = 255;
+    const da = A[i] - ma, db = B[i] - mb;
+    const p1 = (co*da + si*db) * w1, p2 = (co*db - si*da) * w2;
+    let a = co*p1 - si*p2;
+    const b = si*p1 + co*p2;
+    if (a > 0) a *= RED_ENFASIS;
+    const [r, g, bb] = lab2rgb(L[i], Math.max(-128, Math.min(127, a)), Math.max(-128, Math.min(127, b)));
+    out[i*4] = r; out[i*4+1] = g; out[i*4+2] = bb; out[i*4+3] = 255;
   }
   return new ImageData(out, imageData.width, imageData.height);
 }
@@ -259,7 +323,11 @@ export function bichrome(imageData: ImageData, I: number, mask: Uint8Array | nul
     const nL = Math.max(0, Math.min(100, Li + wb));
     const isR = !isW && ai < 5 && Li < mL;
     const rs = isR ? 0.7 : 1;
-    const [r, g, b] = lab2rgb(nL * rs + (1 - rs) * (nL * 0.6), ai * rb, bi * (isW ? 0.5 : 1));
+    // a* y b* se acotan a ±128 antes de volver a RGB, como en el escritorio:
+    // sin eso, con colores muy saturados (la tarjeta de color) la salida se
+    // apartaba hasta 97 niveles. Divergencia previa a v3.7.0, encontrada al
+    // sumar este filtro a npm run verificar.
+    const [r, g, b] = lab2rgb(nL * rs + (1 - rs) * (nL * 0.6), Math.max(-128, Math.min(127, ai * rb)), Math.max(-128, Math.min(127, bi * (isW ? 0.5 : 1))));
     out[i*4] = r; out[i*4+1] = g; out[i*4+2] = b; out[i*4+3] = 255;
   }
   return new ImageData(out, imageData.width, imageData.height);
@@ -450,7 +518,10 @@ export function lds(imageData: ImageData, I: number, mask: Uint8Array | null, st
 export function petro(imageData: ImageData, I: number, mask: Uint8Array | null, store: any) {
   const w = imageData.width, h = imageData.height, n = w * h;
   const data = imageData.data, out = new Uint8ClampedArray(data.length);
-  const L = new Float32Array(n), A = new Float32Array(n), B = new Float32Array(n);
+  // Doble precisión y a* y b* acotados al final, como en el escritorio. Hasta
+  // v3.6.2 iban en Float32 y sin acotar: con colores muy saturados la salida se
+  // apartaba hasta 100 niveles, y en el resto algún píxel suelto por uno.
+  const L = new Float64Array(n), A = new Float64Array(n), B = new Float64Array(n);
   for (let i = 0; i < n; i++) [L[i], A[i], B[i]] = rgb2lab(data[i*4], data[i*4+1], data[i*4+2]);
 
   if (!store.frozen) {
@@ -470,7 +541,7 @@ export function petro(imageData: ImageData, I: number, mask: Uint8Array | null, 
   const satL = buildSAT(L, w, h);
   const rS = Math.max(8, Math.floor(Math.min(w, h) / 40)), rL = Math.max(24, Math.floor(Math.min(w, h) / 10));
 
-  let maxEdge = 0; const edges = new Float32Array(n);
+  let maxEdge = 0; const edges = new Float64Array(n);
   for (let y = 1; y < h - 1; y++) {
     for (let x = 1; x < w - 1; x++) {
       const idx = y * w + x;
@@ -487,13 +558,21 @@ export function petro(imageData: ImageData, I: number, mask: Uint8Array | null, 
     const mS = satMean(satL, w, h, x, y, rS), mLg = satMean(satL, w, h, x, y, rL);
     const Lloc = L[i] + (L[i] - mS)*I*2.5*0.6 + (L[i] - mLg)*I*1.2*0.4;
     const nL = Math.max(0, Math.min(100, Lloc + (edges[i] / (maxEdge || 1)) * 20 * (I * 0.25)));
-    const [r, g, b] = lab2rgb(nL, midA + (A[i] - midA) * I * 3, midB + (B[i] - midB) * I * 3);
+    const cb = I * 3;
+    const nA = Math.max(-128, Math.min(127, midA + (A[i] - midA) * cb));
+    const nB = Math.max(-128, Math.min(127, midB + (B[i] - midB) * cb));
+    const [r, g, b] = lab2rgb(nL, nA, nB);
     out[i*4] = r; out[i*4+1] = g; out[i*4+2] = b; out[i*4+3] = 255;
   }
   return new ImageData(out, w, h);
 }
 
-export function relief(imageData: ImageData, I: number, mask: Uint8Array | null) {
+// Relieve. Con escala 0 (por defecto) es el mapa de bordes de siempre, el
+// mismo de v3.6.x; con una escala pasa a reliefEscala (v3.7.0), pensado para
+// grabados. La escala va en `opts`, igual que en reliefMap del escritorio.
+export function relief(imageData: ImageData, I: number, mask: Uint8Array | null, store?: any, opts?: { escala?: number } | null) {
+  const escala = (opts && opts.escala) || 0;
+  if (escala > 0) return reliefEscala(imageData, I, mask, store, escala);
   const w = imageData.width, h = imageData.height, n = w * h, out = new Uint8ClampedArray(imageData.data.length);
   const lum = new Float64Array(n);
   for (let i = 0; i < n; i++) lum[i] = 0.299*imageData.data[i*4] + 0.587*imageData.data[i*4+1] + 0.114*imageData.data[i*4+2];
@@ -516,6 +595,114 @@ export function relief(imageData: ImageData, I: number, mask: Uint8Array | null)
     const e = Math.pow(Math.min(1, (edges[i] / (maxEdge || 1)) * I * 1.2), 0.7);
     const v = Math.round(e * 255);
     out[i*4] = Math.min(255, Math.round(v * 1.05)); out[i*4+1] = Math.min(255, Math.round(v * 0.92)); out[i*4+2] = Math.min(255, Math.round(v * 0.78)); out[i*4+3] = 255;
+  }
+  return new ImageData(out, w, h);
+}
+
+// Escalas del Relieve, en % del lado mayor. 0 = mapa de bordes. La escala es
+// lo más chico que se conserva: todo lo menor se borra. El tope es 1 %: con
+// 2 %, en una foto de panel se borraban los propios surcos.
+export const RELIEF_ESCALAS = [0, 0.1, 0.25, 0.5, 1];
+// Cuántas veces más grande que la escala es el entorno que se resta como fondo
+const RELIEF_FONDO = 16;
+
+// Promedio en caja de (2r+1)×(2r+1), separable y siempre por filas, con la
+// ventana recortada en los bordes (el criterio de satMean). Lee src y escribe
+// dst con tmp de intermedio; src y dst pueden ser el mismo, tmp no. Es boxBlur
+// del escritorio, operación por operación.
+export function boxBlur(src: Float32Array, dst: Float32Array, tmp: Float32Array, w: number, h: number, r: number) {
+  for (let y = 0; y < h; y++) {
+    const o = y * w;
+    let s = 0;
+    for (let x = 0; x <= Math.min(w - 1, r); x++) s += src[o + x];
+    for (let x = 0; x < w; x++) {
+      tmp[o + x] = s / (Math.min(w - 1, x + r) - Math.max(0, x - r) + 1);
+      if (x + r + 1 < w) s += src[o + x + r + 1];
+      if (x - r >= 0) s -= src[o + x - r];
+    }
+  }
+  const col = new Float64Array(w);
+  for (let y = 0; y <= Math.min(h - 1, r); y++) { const o = y * w; for (let x = 0; x < w; x++) col[x] += tmp[o + x]; }
+  for (let y = 0; y < h; y++) {
+    const o = y * w, cnt = Math.min(h - 1, y + r) - Math.max(0, y - r) + 1;
+    for (let x = 0; x < w; x++) dst[o + x] = col[x] / cnt;
+    if (y + r + 1 < h) { const o2 = (y + r + 1) * w; for (let x = 0; x < w; x++) col[x] += tmp[o2 + x]; }
+    if (y - r >= 0) { const o3 = (y - r) * w; for (let x = 0; x < w; x++) col[x] -= tmp[o3 + x]; }
+  }
+}
+
+// Resta a la luminancia, en el lugar, la superficie cuadrática que mejor la
+// ajusta (iluminación general, curvatura de conjunto de la roca). Sin esto, el
+// promedio recortado de los bordes no cancela un gradiente de luz y la franja
+// del borde queda afectada. Es quitarTendencia del escritorio.
+export function quitarTendencia(lum: Float32Array, w: number, h: number) {
+  const cx = (w - 1) / 2, cy = (h - 1) / 2, sx = Math.max(cx, 1), sy = Math.max(cy, 1);
+  const uu = new Float64Array(w), vv = new Float64Array(h);
+  for (let x = 0; x < w; x++) uu[x] = (x - cx) / sx;
+  for (let y = 0; y < h; y++) vv[y] = (y - cy) / sy;
+  const U = [0,0,0,0,0], V = [0,0,0,0,0];
+  for (let x = 0; x < w; x++) { let p = 1; for (let a = 0; a < 5; a++) { U[a] += p; p *= uu[x]; } }
+  for (let y = 0; y < h; y++) { let p = 1; for (let a = 0; a < 5; a++) { V[a] += p; p *= vv[y]; } }
+  const E = [[0,0],[1,0],[0,1],[2,0],[1,1],[0,2]];
+  const M = E.map(([aj, bj]) => E.map(([ak, bk]) => U[aj + ak] * V[bj + bk]));
+  const b = [0,0,0,0,0,0];
+  for (let y = 0; y < h; y++) {
+    const o = y * w, v = vv[y];
+    let s0 = 0, s1 = 0, s2 = 0;
+    for (let x = 0; x < w; x++) { const L = lum[o + x], u = uu[x]; s0 += L; s1 += L * u; s2 += L * u * u; }
+    b[0] += s0; b[1] += s1; b[2] += v * s0; b[3] += s2; b[4] += v * s1; b[5] += v * v * s0;
+  }
+  for (let c = 0; c < 6; c++) {
+    let p = c;
+    for (let r = c + 1; r < 6; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    if (Math.abs(M[p][c]) < 1e-12) return;
+    [M[c], M[p]] = [M[p], M[c]]; [b[c], b[p]] = [b[p], b[c]];
+    for (let r = c + 1; r < 6; r++) {
+      const k = M[r][c] / M[c][c];
+      for (let j = c; j < 6; j++) M[r][j] -= k * M[c][j];
+      b[r] -= k * b[c];
+    }
+  }
+  const co = [0,0,0,0,0,0];
+  for (let c = 5; c >= 0; c--) {
+    let s = b[c];
+    for (let j = c + 1; j < 6; j++) s -= M[c][j] * co[j];
+    co[c] = s / M[c][c];
+  }
+  for (let y = 0; y < h; y++) {
+    const o = y * w, v = vv[y];
+    const k0 = co[0] + co[2]*v + co[5]*v*v, k1 = co[1] + co[4]*v;
+    for (let x = 0; x < w; x++) { const u = uu[x]; lum[o + x] -= k0 + k1*u + co[3]*u*u; }
+  }
+}
+
+// Relieve por escala (v3.7.0): pasabanda sobre la luminancia sin tendencia,
+//   D = suavizado(r) − suavizado(RELIEF_FONDO · r),
+// con r como fracción del lado mayor, para que la misma foto a 2000 px o a
+// resolución completa dé el mismo relieve. Salida gris: 128 es el entorno y
+// cada desvío robusto (IQR/1.349) vale 40 · intensidad/1.5 niveles. Trabaja
+// sobre el brillo, no sobre la altura. Es reliefEscala del escritorio.
+function reliefEscala(imageData: ImageData, I: number, mask: Uint8Array | null, store: any, escala: number) {
+  const data = imageData.data, w = imageData.width, h = imageData.height, n = w * h;
+  const lum = new Float32Array(n), fino = new Float32Array(n), fondo = new Float32Array(n), tmp = new Float32Array(n);
+  for (let i = 0; i < n; i++) lum[i] = 0.299*data[i*4] + 0.587*data[i*4+1] + 0.114*data[i*4+2];
+  quitarTendencia(lum, w, h);
+  const r = Math.max(1, Math.round(Math.max(w, h) * escala / 200)), R = r * RELIEF_FONDO;
+  boxBlur(lum, fino, tmp, w, h, r); boxBlur(fino, fondo, tmp, w, h, r); boxBlur(fondo, fino, tmp, w, h, r);
+  boxBlur(lum, fondo, tmp, w, h, R); boxBlur(fondo, lum, tmp, w, h, R); boxBlur(lum, fondo, tmp, w, h, R);
+  for (let i = 0; i < n; i++) fino[i] -= fondo[i];
+  let st = store && store.frozen;
+  if (!st) {
+    const q = tukeyFences(fino, mask, 0);   // k = 0: Q1 y Q3
+    st = { mid: (q.lo + q.hi) / 2, sig: (q.hi - q.lo) / 1.349 || 1 };
+    if (store) store.frozen = st;
+  }
+  const g = 40 * I / 1.5 / st.sig;
+  const out = new Uint8ClampedArray(data.length);
+  for (let i = 0; i < n; i++) {
+    if (mask && !mask[i]) { out.set(data.slice(i * 4, i * 4 + 4), i * 4); continue; }
+    const v = 128 + (fino[i] - st.mid) * g;
+    out[i*4] = v; out[i*4+1] = v; out[i*4+2] = v; out[i*4+3] = 255;
   }
   return new ImageData(out, w, h);
 }

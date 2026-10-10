@@ -26,7 +26,7 @@ authors:
       Escuela de Arqueología, Universidad Nacional de Catamarca / CONICET
     city: "San Fernando del Valle de Catamarca"
     country: AR
-version: "3.6.2"
+version: "3.7.0"
 date-released: "2026-10-05"
 license: GPL-3.0-or-later
 repository-code: "https://github.com/emilios81/opuntia-movil"
